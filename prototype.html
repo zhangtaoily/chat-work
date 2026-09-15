@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat-Work Agent · 交互原型 v1.6</title>
+<style>
+:root{
+  --bg:#f2f4f8;
+  --panel:#ffffff;
+  --line:#e5e8f0;
+  --line-soft:#eef0f6;
+  --text:#1c2333;
+  --muted:#71798c;
+  --faint:#9aa2b4;
+  --primary:#4f46e5;
+  --primary-soft:#eef0fe;
+  --primary-grad:linear-gradient(135deg,#6f66f5 0%,#4f46e5 100%);
+  --green:#0e9f6e;
+  --green-soft:#e7f7f0;
+  --amber:#d97706;
+  --amber-soft:#fdf3e3;
+  --red:#e02424;
+  --red-soft:#fdeaea;
+  --radius:14px;
+  --shadow-card:0 1px 2px rgba(28,35,51,.04),0 8px 24px -12px rgba(28,35,51,.12);
+  --shadow-pop:0 12px 40px -8px rgba(28,35,51,.22);
+  --font:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;overflow:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#c9ced9;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#aab2c2}
+::-webkit-scrollbar-track{background:transparent}
+
+.app{display:flex;flex-direction:column;height:100vh;min-width:1180px}
+
+/* ============ 顶栏 ============ */
+.topbar{height:58px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 20px;gap:16px;flex-shrink:0;z-index:10}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:34px;height:34px;border-radius:10px;background:var(--primary-grad);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px -4px rgba(79,70,229,.5)}
+.brand-mark svg{width:19px;height:19px;color:#fff}
+.brand-name{font-size:16px;font-weight:700;letter-spacing:.2px}
+.brand-name em{font-style:normal;color:var(--primary)}
+.proto-badge{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--bg);white-space:nowrap}
+.topbar-search{flex:1;max-width:420px;margin-left:12px;position:relative}
+.topbar-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--faint)}
+.topbar-search input{width:100%;height:36px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:0 76px 0 36px;font-size:13px;color:var(--text);outline:none;transition:.2s}
+.topbar-search input:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--faint);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;display:flex;gap:4px;align-items:center}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.icon-btn{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--muted);position:relative;transition:.15s}
+.icon-btn:hover{background:var(--line-soft);color:var(--text)}
+.icon-btn svg{width:18px;height:18px}
+.icon-btn .dot{position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;background:var(--red);border:2px solid #fff}
+.user-chip{display:flex;align-items:center;gap:10px;padding:5px 12px 5px 6px;border-radius:999px;border:1px solid var(--line);transition:.15s}
+.user-chip:hover{background:var(--line-soft)}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.user-meta{line-height:1.25}
+.user-meta b{font-size:13px;display:block}
+.user-meta span{font-size:11px;color:var(--muted)}
+
+/* ============ 布局 ============ */
+.layout{flex:1;display:flex;overflow:hidden}
+
+/* ============ 侧栏 ============ */
+.sidebar{width:236px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 12px;gap:6px;flex-shrink:0}
+.new-chat{height:40px;border-radius:11px;background:var(--primary-grad);color:#fff;font-size:13.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 16px -8px rgba(79,70,229,.55);transition:.15s}
+.new-chat:hover{transform:translateY(-1px);box-shadow:0 10px 20px -8px rgba(79,70,229,.6)}
+.new-chat svg{width:16px;height:16px}
+.nav-group{margin-top:12px}
+.nav-label{font-size:11px;font-weight:600;color:var(--faint);padding:0 10px;margin-bottom:4px;letter-spacing:.4px}
+.nav-item{display:flex;align-items:center;gap:10px;height:36px;border-radius:9px;padding:0 10px;color:var(--muted);font-size:13.5px;transition:.13s;position:relative}
+.nav-item svg{width:17px;height:17px}
+.nav-item:hover{background:var(--line-soft);color:var(--text)}
+.nav-item.active{background:var(--primary-soft);color:var(--primary);font-weight:600}
+.phase-tag{margin-left:auto;font-size:10px;background:var(--line-soft);color:var(--faint);border-radius:5px;padding:1px 6px}
+.nav-item.active .phase-tag{background:rgba(79,70,229,.12);color:var(--primary)}
+.conv-list{flex:1;overflow-y:auto;margin-top:4px}
+.conv-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:.13s;border:1px solid transparent}
+.conv-item:hover{background:var(--line-soft)}
+.conv-item.active{background:var(--primary-soft);border-color:rgba(79,70,229,.18)}
+.conv-ico{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.conv-ico svg{width:15px;height:15px}
+.ci-order{background:#eef0fe;color:#4f46e5}
+.ci-approve{background:#fdf3e3;color:#d97706}
+.ci-bi{background:#e7f7f0;color:#0e9f6e}
+.conv-meta{min-width:0;flex:1}
+.conv-meta b{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-meta span{font-size:11px;color:var(--faint);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-foot{border-top:1px solid var(--line-soft);padding-top:10px;margin-top:8px}
+.my-skills{font-size:12px;color:var(--muted);padding:0 10px 6px;display:flex;justify-content:space-between;align-items:center}
+.my-skills b{color:var(--text)}
+.skill-pill{display:flex;align-items:center;gap:8px;height:34px;border-radius:9px;padding:0 10px;font-size:12.5px;color:var(--muted)}
+.skill-pill:hover{background:var(--line-soft);color:var(--text)}
+.skill-pill svg{width:15px;height:15px}
+
+/* ============ 聊天主区 ============ */
+.chat{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.chat-head{height:56px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.85);backdrop-filter:blur(8px);display:flex;align-items:center;padding:0 22px;gap:12px;flex-shrink:0}
+.chat-head .skill-chip{display:flex;align-items:center;gap:7px;background:var(--primary-soft);color:var(--primary);border:1px solid rgba(79,70,229,.18);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600}
+.skill-chip svg{width:13px;height:13px}
+.skill-chip .ver{font-weight:400;opacity:.65;font-size:11px}
+.chat-head .head-sub{font-size:12px;color:var(--faint)}
+.chat-head .spacer{flex:1}
+.mode-display{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.mode-display .md-badge{display:flex;align-items:center;gap:5px;border-radius:8px;padding:3px 10px;font-weight:600}
+.md-ask{background:var(--green-soft);color:var(--green)}
+.md-plan{background:var(--amber-soft);color:var(--amber)}
+.md-craft{background:var(--red-soft);color:var(--red)}
+
+.chat-scroll{flex:1;overflow-y:auto;padding:26px 0 14px}
+.chat-inner{max-width:860px;margin:0 auto;padding:0 24px}
+.conv-page{display:none}
+.conv-page.active{display:block}
+
+/* 系统欢迎条 */
+.sys-note{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,#f6f7fd,#eef4ff);border:1px solid #e3e7fb;border-radius:12px;padding:12px 14px;margin:0 46px 22px 0;font-size:12.5px;color:var(--muted)}
+.sys-note svg{width:16px;height:16px;color:var(--primary);flex-shrink:0;margin-top:1px}
+.sys-note b{color:var(--text)}
+.sys-note .sep{margin:0 6px;color:#c3c9d9}
+
+/* 日期分隔 */
+.day-sep{display:flex;align-items:center;gap:14px;color:var(--faint);font-size:11.5px;margin:6px 0 18px}
+.day-sep::before,.day-sep::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+
+/* 消息行 */
+.msg{display:flex;gap:12px;margin-bottom:22px;animation:fadeUp .35s ease both}
+.msg.user{flex-direction:row-reverse}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg-avatar{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.msg-avatar svg{width:17px;height:17px}
+.av-agent{background:var(--primary-grad);box-shadow:0 4px 10px -4px rgba(79,70,229,.5)}
+.av-agent svg{color:#fff}
+.av-user{background:#fff;border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:700}
+.msg-body{max-width:calc(100% - 92px);min-width:0}
+.msg.user .msg-body{max-width:70%}
+.bubble{padding:11px 15px;border-radius:4px 16px 16px 16px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-card);font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.msg.user .bubble{background:var(--primary-grad);color:#fff;border:none;border-radius:16px 4px 16px 16px;box-shadow:0 6px 18px -8px rgba(79,70,229,.55)}
+.bubble .hl{color:var(--primary);font-weight:600}
+.bubble .num{font-weight:700;font-variant-numeric:tabular-nums}
+.msg-time{font-size:11px;color:var(--faint);margin-top:6px}
+.msg.user .msg-time{text-align:right}
+
+/* 思考/执行折叠块 */
+.think{margin-bottom:10px;border:1px solid var(--line);border-radius:12px;background:#fbfcfe;overflow:hidden;width:100%}
+.think-head{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer;user-select:none;font-size:12.5px;color:var(--muted)}
+.think-head:hover{background:var(--line-soft)}
+.think-head .th-title{font-weight:600;color:var(--text)}
+.th-steps{display:flex;flex-wrap:wrap;gap:5px;margin-left:auto;align-items:center}
+.th-step{font-size:10.5px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.th-step.done{border-color:#c8ecdd;background:var(--green-soft);color:var(--green)}
+.th-step.warn{color:var(--amber);border-color:#f3dfb2;background:var(--amber-soft)}
+.think-head .chev{width:14px;height:14px;transition:.25s;flex-shrink:0}
+.think.open .chev{transform:rotate(180deg)}
+.think-detail{display:none;border-top:1px dashed var(--line);padding:12px 15px;font-size:12px;line-height:1.9;color:var(--muted);background:#fff}
+.think.open .think-detail{display:block}
+.think-detail .dt-row{display:flex;gap:8px}
+.think-detail .dt-k{width:76px;flex-shrink:0;color:var(--faint)}
+.think-detail code{background:var(--line-soft);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#5b5f97}
+.think-detail .ok{color:var(--green);font-weight:600}
+.think-detail .warn-t{color:var(--amber);font-weight:600}
+
+/* ============ 通用卡片 ============ */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-card);width:100%;overflow:hidden}
+.card-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line-soft);background:linear-gradient(180deg,#fbfcfe,#fff)}
+.card-head .c-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-head .c-ico svg{width:18px;height:18px}
+.ico-blue{background:var(--primary-soft);color:var(--primary)}
+.ico-green{background:var(--green-soft);color:var(--green)}
+.ico-amber{background:var(--amber-soft);color:var(--amber)}
+.card-head .c-title b{font-size:14.5px;display:block}
+.card-head .c-title span{font-size:11.5px;color:var(--faint)}
+.card-head .c-badges{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
+.cbadge{font-size:10.5px;font-weight:600;border-radius:7px;padding:3px 9px;display:flex;align-items:center;gap:4px}
+.cb-craft{background:var(--red-soft);color:var(--red)}
+.cb-perm{background:var(--green-soft);color:var(--green)}
+.cb-ask{background:var(--green-soft);color:var(--green)}
+.cb-skill{background:var(--primary-soft);color:var(--primary)}
+.cbadge svg{width:11px;height:11px}
+
+/* 表单卡字段表 */
+.form-rows{padding:6px 18px 10px}
+.form-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line-soft)}
+.form-row:last-child{border-bottom:none}
+.f-label{width:110px;flex-shrink:0;font-size:12.5px;color:var(--muted)}
+.f-label .req{color:var(--red);margin-left:2px}
+.f-value{flex:1;font-size:13.5px;font-weight:500;min-width:0}
+.f-value .money{font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums}
+.f-tag{flex-shrink:0;font-size:10.5px;border-radius:6px;padding:2px 8px;font-weight:500}
+.t-def{background:var(--green-soft);color:var(--green)}
+.t-ask{background:var(--amber-soft);color:var(--amber)}
+.t-calc{background:var(--primary-soft);color:var(--primary)}
+.t-sys{background:var(--line-soft);color:var(--muted)}
+.amount-row{background:linear-gradient(90deg,#f8f8ff,#f2f4fe);border-radius:10px;padding:10px 12px;border-bottom:none;margin:2px 0}
+.amount-row .f-value{font-size:15px}
+
+.card-hint{display:flex;align-items:center;gap:8px;margin:0 18px;padding:9px 12px;background:var(--amber-soft);border:1px solid #f3dfb2;border-radius:10px;font-size:12px;color:#a05a0a;line-height:1.5}
+.card-hint svg{width:14px;height:14px;flex-shrink:0}
+.card-actions{display:flex;gap:10px;align-items:center;padding:14px 18px;justify-content:flex-end}
+.btn{height:38px;border-radius:10px;font-size:13.5px;font-weight:600;padding:0 20px;transition:.15s;display:inline-flex;align-items:center;gap:7px;justify-content:center}
+.btn svg{width:15px;height:15px}
+.btn-ghost{border:1px solid var(--line);color:var(--muted);background:#fff}
+.btn-ghost:hover{border-color:var(--faint);color:var(--text)}
+.btn-primary{background:var(--primary-grad);color:#fff;box-shadow:0 6px 16px -8px rgba(79,70,229,.6)}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-success{background:var(--green);color:#fff}
+.btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+
+/* 执行流水线步骤 */
+.pipeline{display:flex;gap:0;padding:16px 18px 6px;flex-wrap:wrap}
+.pl-step{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);padding-right:18px;position:relative}
+.pl-step:not(:last-child)::after{content:"";width:22px;height:1.5px;background:var(--line);margin-left:18px;position:absolute;top:50%}
+.pl-dot{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--line-soft);color:var(--faint)}
+.pl-dot svg{width:11px;height:11px}
+.pl-step.done .pl-dot{background:var(--green-soft);color:var(--green)}
+.pl-step.done{color:var(--text)}
+.pl-step.run .pl-dot{background:var(--primary-soft);color:var(--primary);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(79,70,229,.25)}50%{box-shadow:0 0 0 6px rgba(79,70,229,0)}}
+
+/* 成功卡 */
+.success-band{display:flex;align-items:center;gap:14px;padding:18px;background:linear-gradient(135deg,#eafaf3,#f0fdf6);border-bottom:1px solid #d5efe3}
+.success-check{width:44px;height:44px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px -6px rgba(14,159,110,.55);animation:pop .4s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.success-check svg{width:22px;height:22px;color:#fff}
+.success-info b{font-size:15px;display:block}
+.success-info .order-no{font-family:ui-monospace,Consolas,monospace;font-size:17px;color:var(--green);letter-spacing:.5px}
+.success-info span{font-size:12px;color:var(--muted);display:block;margin-top:2px}
+.result-rows{padding:8px 18px 12px}
+.result-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px}
+.result-row:last-child{border:none}
+.rr-k{color:var(--muted);width:92px;flex-shrink:0}
+.rr-v{flex:1;color:var(--text);font-weight:500}
+.rr-v code{font-family:ui-monospace,Consolas,monospace;font-size:11px;background:var(--line-soft);border-radius:5px;padding:2px 7px;color:#5b5f97}
+.rr-badge{font-size:10.5px;border-radius:6px;padding:2px 8px;font-weight:600}
+.rb-green{background:var(--green-soft);color:var(--green)}
+.rb-blue{background:var(--primary-soft);color:var(--primary)}
+
+/* 审批列表卡 */
+.todo-item{padding:14px 18px;border-bottom:1px solid var(--line-soft);transition:.15s}
+.todo-item:hover{background:#fbfcfe}
+.todo-item:last-of-type{border-bottom:none}
+.todo-top{display:flex;align-items:flex-start;gap:12px}
+.todo-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.todo-ico svg{width:17px;height:17px}
+.todo-main{flex:1;min-width:0}
+.todo-main b{font-size:13.5px;display:block}
+.todo-main .t-sub{font-size:11.5px;color:var(--muted);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.todo-main .t-sub .amt{font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.wait-warn{color:var(--amber);font-weight:600}
+.todo-acts{display:flex;gap:8px;flex-shrink:0;padding-top:2px}
+.mini-btn{height:30px;border-radius:8px;font-size:12px;font-weight:600;padding:0 13px;border:1px solid var(--line);color:var(--muted);background:#fff;transition:.13s}
+.mini-btn:hover{border-color:var(--faint);color:var(--text)}
+.mini-btn.agree{background:var(--green);border-color:var(--green);color:#fff}
+.mini-btn.agree:hover{background:#0c8a5e}
+.mini-btn.reject{color:var(--red)}
+.mini-btn.reject:hover{border-color:var(--red);background:var(--red-soft)}
+.confirm-strip{display:none;margin-top:12px;background:var(--amber-soft);border:1px solid #f3dfb2;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#8a4f08;line-height:1.6}
+.confirm-strip.show{display:block;animation:fadeUp .25s ease both}
+.confirm-strip .cs-btns{display:flex;gap:8px;margin-top:8px}
+.todo-item.done-handled{opacity:.55}
+.todo-item.done-handled .todo-top{filter:saturate(.4)}
+.handled-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--green);background:var(--green-soft);border-radius:7px;padding:3px 10px}
+.handled-tag svg{width:12px;height:12px}
+
+/* BI 卡 */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px 18px}
+.kpi{border:1px solid var(--line-soft);border-radius:12px;padding:13px 15px;background:linear-gradient(180deg,#fdfdfe,#f8f9fd)}
+.kpi .k-label{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.kpi .k-label svg{width:13px;height:13px;color:var(--faint)}
+.kpi .k-value{font-size:21px;font-weight:800;margin-top:5px;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.kpi .k-trend{font-size:11px;margin-top:4px;font-weight:600}
+.trend-up{color:var(--green)}
+.trend-warn{color:var(--amber)}
+.bi-table{padding:4px 18px 12px}
+.bi-row{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px}
+.bi-row:last-child{border:none}
+.bi-name{width:120px;flex-shrink:0;font-weight:600}
+.bi-bar-wrap{flex:1;height:8px;border-radius:6px;background:var(--line-soft);overflow:hidden}
+.bi-bar{height:100%;border-radius:6px;background:var(--primary-grad);width:0;transition:width .9s cubic-bezier(.22,1,.36,1)}
+.bi-val{width:96px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;flex-shrink:0}
+.bi-pct{width:44px;text-align:right;color:var(--faint);flex-shrink:0}
+.perm-note{display:flex;align-items:center;gap:8px;margin:4px 18px 14px;padding:9px 12px;background:var(--line-soft);border-radius:10px;font-size:11.5px;color:var(--muted)}
+.perm-note svg{width:14px;height:14px;color:var(--green);flex-shrink:0}
+
+/* ============ 输入区 ============ */
+.composer-wrap{flex-shrink:0;padding:14px 24px 18px;background:linear-gradient(180deg,rgba(242,244,248,0),var(--bg) 40%)}
+.composer{max-width:860px;margin:0 auto}
+.mode-chips{display:flex;gap:8px;margin-bottom:10px;align-items:center}
+.mode-chips .mc-label{font-size:11.5px;color:var(--faint);margin-right:2px}
+.mode-chip{display:flex;align-items:center;gap:6px;height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:12px;color:var(--muted);transition:.15s}
+.mode-chip:hover{border-color:var(--faint);color:var(--text)}
+.mode-chip svg{width:13px;height:13px}
+.mode-chip.active{border-color:transparent;font-weight:600}
+.mode-chip.active.mc-ask{background:var(--green-soft);color:var(--green)}
+.mode-chip.active.mc-plan{background:var(--amber-soft);color:var(--amber)}
+.mode-chip.active.mc-craft{background:var(--red-soft);color:var(--red)}
+.mode-hint{margin-left:auto;font-size:11px;color:var(--faint);display:flex;align-items:center;gap:5px}
+.mode-hint svg{width:12px;height:12px}
+.input-box{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-card);padding:10px 12px 10px 16px;display:flex;align-items:flex-end;gap:10px;transition:.2s}
+.input-box:focus-within{border-color:var(--primary);box-shadow:0 0 0 4px rgba(79,70,229,.1),var(--shadow-card)}
+.input-box textarea{flex:1;border:none;outline:none;resize:none;font-family:inherit;font-size:14px;line-height:1.6;max-height:120px;color:var(--text);background:transparent}
+.input-box textarea::placeholder{color:var(--faint)}
+.attach-btn{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0;position:relative}
+.attach-btn:hover{background:var(--line-soft);color:var(--text)}
+.attach-btn svg{width:17px;height:17px}
+.attach-btn .local-tag{position:absolute;bottom:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:var(--green);border:2px solid #fff;display:flex;align-items:center;justify-content:center}
+.attach-btn .local-tag svg{width:8px;height:8px;color:#fff}
+.send-btn{width:38px;height:38px;border-radius:12px;background:var(--primary-grad);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 14px -6px rgba(79,70,229,.6);transition:.15s}
+.send-btn:hover{transform:translateY(-1px)}
+.send-btn svg{width:17px;height:17px}
+.composer-foot{display:flex;justify-content:space-between;margin-top:9px;font-size:11px;color:var(--faint);padding:0 4px}
+
+/* ============ 右侧上下文面板 ============ */
+.ctx{width:280px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:16px 14px;flex-shrink:0;display:flex;flex-direction:column;gap:14px}
+.ctx-card{border:1px solid var(--line-soft);border-radius:13px;background:#fdfdfe;overflow:hidden}
+.ctx-head{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line-soft);font-size:12.5px;font-weight:700}
+.ctx-head svg{width:15px;height:15px}
+.ctx-body{padding:11px 14px;font-size:12px;color:var(--muted);line-height:1.7}
+.ctx-body .cb{color:var(--text);font-weight:600}
+.skill-flow{display:flex;flex-direction:column;gap:0}
+.sf-step{display:flex;gap:10px;font-size:11.5px;color:var(--muted);padding:4px 0;align-items:flex-start}
+.sf-dot{width:18px;height:18px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;flex-shrink:0;margin-top:1px}
+.sf-step.hl .sf-dot{background:var(--green-soft);color:var(--green)}
+.sf-line{width:1.5px;background:var(--line);margin-left:8.5px;flex-shrink:0}
+.mem-item{display:flex;gap:9px;align-items:flex-start;padding:6px 0}
+.mem-item svg{width:14px;height:14px;color:var(--primary);flex-shrink:0;margin-top:2px}
+.mem-item .mi-t{font-size:11.5px;line-height:1.55}
+.mem-item .mi-t b{color:var(--text)}
+.ctx-link{display:flex;align-items:center;justify-content:center;gap:6px;font-size:11.5px;color:var(--primary);padding:8px;border-top:1px dashed var(--line-soft);font-weight:600}
+.ctx-link svg{width:12px;height:12px}
+.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qk-btn{display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 6px;border:1px solid var(--line-soft);border-radius:11px;background:#fff;font-size:11px;color:var(--muted);transition:.15s;text-align:center}
+.qk-btn:hover{border-color:rgba(79,70,229,.3);color:var(--primary);background:var(--primary-soft)}
+.qk-btn svg{width:16px;height:16px}
+.ctx-badge-row{display:flex;gap:6px;flex-wrap:wrap}
+.ctx-badge{font-size:10.5px;border-radius:7px;padding:3px 8px;background:var(--line-soft);color:var(--muted);font-weight:500;display:inline-flex;align-items:center;gap:4px}
+.ctx-badge.on{background:var(--green-soft);color:var(--green)}
+.ctx-badge svg{width:10px;height:10px}
+
+/* ============ Toast ============ */
+.toast-wrap{position:fixed;right:22px;bottom:22px;display:flex;flex-direction:column;gap:10px;z-index:99}
+.toast{background:#1c2333;color:#fff;border-radius:12px;padding:12px 16px;font-size:12.5px;box-shadow:var(--shadow-pop);display:flex;align-items:center;gap:10px;animation:toastIn .3s cubic-bezier(.22,1,.36,1) both;max-width:340px;line-height:1.55}
+.toast svg{width:16px;height:16px;flex-shrink:0}
+.toast.t-ok svg{color:#34d399}
+.toast.t-warn svg{color:#fbbf24}
+.toast.t-info svg{color:#818cf8}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+.toast.out{animation:toastOut .25s ease both}
+@keyframes toastOut{to{opacity:0;transform:translateX(30px)}}
+</style>
+</head>
+<body>
+
+<!-- SVG 图标库 -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3L12 3z"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+<symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4 17.5v-11A2.5 2.5 0 0 1 6.5 4"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 20 17.5v-11A2.5 2.5 0 0 0 17.5 4"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+<symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+<symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+<symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 9h.01M15 9h.01M8 13a8 8 0 0 0 8 0M9.5 16.5c1.5 1 3.5 1 5 0"/></symbol>
+<symbol id="i-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
+</defs>
+</svg>
+
+<div class="app">
+  <!-- ===== 顶栏 ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><svg><use href="#i-spark"/></svg></div>
+      <div class="brand-name">Chat-<em>Work</em> Agent</div>
+      <div class="proto-badge">PRD v1.6 · 交互原型 · 演示：销售科 张明</div>
+    </div>
+    <div class="topbar-search">
+      <svg><use href="#i-search"/></svg>
+      <input type="text" placeholder="全局搜索：会话、技能、知识库…">
+      <span class="kbd">Alt+Space · Quick Ask</span>
+    </div>
+    <div class="topbar-right">
+      <button class="icon-btn" title="通知（3 条未读）"><svg><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <button class="icon-btn" title="设置"><svg><use href="#i-gear"/></svg></button>
+      <div class="user-chip">
+        <div class="avatar">张</div>
+        <div class="user-meta"><b>张明</b><span>销售科 · EMP002345</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- ===== 侧栏 ===== -->
+    <aside class="sidebar">
+      <button class="new-chat"><svg><use href="#i-plus"/></svg>新建会话</button>
+      <div class="nav-group">
+        <div class="nav-label">工作台</div>
+        <div class="nav-item active"><svg><use href="#i-chat"/></svg>会话</div>
+        <div class="nav-item"><svg><use href="#i-grid"/></svg>技能市场<span class="phase-tag">Phase 2</span></div>
+        <div class="nav-item"><svg><use href="#i-book"/></svg>知识库<span class="phase-tag">Phase 2</span></div>
+        <div class="nav-item"><svg><use href="#i-zap"/></svg>自动化<span class="phase-tag">Phase 2</span></div>
+      </div>
+      <div class="nav-group" style="margin-top:10px">
+        <div class="nav-label">最近会话</div>
+      </div>
+      <div class="conv-list">
+        <div class="conv-item active" data-conv="order" onclick="switchConv('order')">
+          <div class="conv-ico ci-order"><svg><use href="#i-cart"/></svg></div>
+          <div class="conv-meta"><b>销售订单录入</b><span>SO-20260915-0031 已创建</span></div>
+        </div>
+        <div class="conv-item" data-conv="approve" onclick="switchConv('approve')">
+          <div class="conv-ico ci-approve"><svg><use href="#i-file"/></svg></div>
+          <div class="conv-meta"><b>待办审批</b><span>3 条待处理</span></div>
+        </div>
+        <div class="conv-item" data-conv="bi" onclick="switchConv('bi')">
+          <div class="conv-ico ci-bi"><svg><use href="#i-chart"/></svg></div>
+          <div class="conv-meta"><b>BI 数据查询</b><span>本月销售额 · 按产品线</span></div>
+        </div>
+      </div>
+      <div class="sidebar-foot">
+        <div class="my-skills"><span><b>我的技能</b> · 5 个</span></div>
+        <div class="skill-pill"><svg style="color:#4f46e5"><use href="#i-cart"/></svg>销售订单录入</div>
+        <div class="skill-pill"><svg style="color:#d97706"><use href="#i-file"/></svg>待办审批</div>
+        <div class="skill-pill"><svg style="color:#0e9f6e"><use href="#i-chart"/></svg>BI 数据查询</div>
+        <div class="skill-pill"><svg style="color:#71798c"><use href="#i-book"/></svg>工作周报生成</div>
+      </div>
+    </aside>
+
+    <!-- ===== 聊天主区 ===== -->
+    <main class="chat">
+      <div class="chat-head" id="chatHead">
+        <!-- 会话头由 JS 渲染 -->
+      </div>
+
+      <div class="chat-scroll" id="chatScroll">
+        <div class="chat-inner">
+
+          <!-- ================= 会话 1：销售订单录入 ================= -->
+          <div class="conv-page active" id="conv-order">
+            <div class="sys-note">
+              <svg><use href="#i-shield"/></svg>
+              <div>已通过 SSO 登录（AD 域）· 身份 <b>张明 · 销售科</b> · 权限范围：<b>OA 销售单据读写</b><span class="sep">|</span>BI 事业部A报表只读<span class="sep">|</span>操作均记录审计日志</div>
+            </div>
+            <div class="day-sep">今天 · 2026-09-15</div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">帮我给深圳华强电子录一张销售订单，5G 通信模块 500 个</div><div class="msg-time">09:42</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done"><svg style="width:9px;height:9px"><use href="#i-check"/></svg>意图识别</span>
+                      <span class="th-step done">技能路由</span>
+                      <span class="th-step warn">参数 9/10</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">意图识别</span><span>单据录入 / 销售订单（置信度 0.96）</span></div>
+                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中技能 <code>oa_sales_order_entry</code>（匹配问法"录一张销售订单"）</span></div>
+                    <div class="dt-row"><span class="dt-k">参数提取</span><span>客户名=深圳华强电子 · 产品=5G通信模块 · 数量=500<span class="warn-t">　⚠ 交货日期缺失（必填）</span></span></div>
+                    <div class="dt-row"><span class="dt-k">客户匹配</span><span>调用 <code>oa__query_customers</code> → 精确匹配 1 家：<span class="ok">深圳华强电子有限公司（事业部A）</span></span></div>
+                  </div>
+                </div>
+                <div class="bubble">好的，找到客户 <span class="hl">深圳华强电子有限公司</span>（事业部A，月结客户）。产品 "5G 通信模块" 已对齐系统编码 <b>SP-1024</b>，单价将带出最新协议价。<br><br>还差一项必填信息——<b>交货日期</b>是哪天？</div>
+                <div class="msg-time">09:42</div>
+              </div>
+            </div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">10 月 15 号交货</div><div class="msg-time">09:43</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think open">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">参数 10/10</span>
+                      <span class="th-step done">Schema 校验通过</span>
+                      <span class="th-step done">权限校验通过</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">参数提取</span><span>交货日期=2026-10-15（自然语言解析：<span class="ok">必填项已补齐</span>）</span></div>
+                    <div class="dt-row"><span class="dt-k">Schema</span><span>10/10 字段通过 <code>inputSchema</code> 校验 · 枚举值均在 OA 真实存在</span></div>
+                    <div class="dt-row"><span class="dt-k">权限</span><span><code>oa:sales_order:create</code> <span class="ok">✓ 允许</span> · 数据范围：事业部A</span></div>
+                    <div class="dt-row"><span class="dt-k">默认值</span><span>收货地址 / 付款条件 ← 客户主数据自动带出（来自个人记忆：常用客户）</span></div>
+                  </div>
+                </div>
+
+                <!-- 表单确认卡（HITL） -->
+                <div class="card" id="orderCard">
+                  <div class="card-head">
+                    <div class="c-ico ico-blue"><svg><use href="#i-cart"/></svg></div>
+                    <div class="c-title"><b>销售订单 · 请确认后写入 OA</b><span>技能 oa_sales_order_entry · 草稿 v2</span></div>
+                    <div class="c-badges">
+                      <span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>直接执行</span>
+                      <span class="cbadge cb-perm"><svg><use href="#i-shield"/></svg>权限已校验</span>
+                    </div>
+                  </div>
+                  <div class="form-rows">
+                    <div class="form-row"><div class="f-label">客户名称<span class="req">*</span></div><div class="f-value">深圳华强电子有限公司（事业部A）</div><span class="f-tag t-sys">系统匹配</span></div>
+                    <div class="form-row"><div class="f-label">产品<span class="req">*</span></div><div class="f-value">5G 通信模块 <span style="color:var(--faint);font-size:11px">SP-1024</span></div><span class="f-tag t-sys">枚举对齐</span></div>
+                    <div class="form-row"><div class="f-label">数量<span class="req">*</span></div><div class="f-value">500 件</div><span class="f-tag t-ask">对话获得</span></div>
+                    <div class="form-row"><div class="f-label">单价</div><div class="f-value"><span class="money">¥128.00</span> / 件</div><span class="f-tag t-def">协议价带出</span></div>
+                    <div class="form-row"><div class="f-label">交货日期<span class="req">*</span></div><div class="f-value">2026-10-15（周四）</div><span class="f-tag t-ask">追问获得</span></div>
+                    <div class="form-row"><div class="f-label">收货地址</div><div class="f-value" style="font-size:12.5px;color:var(--muted)">广东省深圳市福田区华强北路 88 号华强电子世界 3 期 6 楼</div><span class="f-tag t-def">客户默认</span></div>
+                    <div class="form-row"><div class="f-label">付款条件</div><div class="f-value">月结 30 天</div><span class="f-tag t-def">客户默认</span></div>
+                    <div class="form-row amount-row"><div class="f-label">订单金额</div><div class="f-value"><span class="money">¥64,000.00</span> <span style="font-size:11px;color:var(--faint)">500 × ¥128.00 · 含税</span></div><span class="f-tag t-calc">自动计算</span></div>
+                  </div>
+                  <div class="card-hint"><svg><use href="#i-warn"/></svg>确认后将写入 OA 生成正式单据并触发审批流。此操作经人工确认（HITL），不可直接撤销，如录错需走 OA 作废流程。</div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="toast('演示原型：此处进入字段编辑模式，修改后生成草稿 v3','info')"><svg><use href="#i-edit"/></svg>修改字段</button>
+                    <button class="btn btn-primary" id="btnSubmit" onclick="submitOrder()"><svg><use href="#i-check"/></svg>确认提交</button>
+                  </div>
+                </div>
+                <div class="msg-time">09:43</div>
+              </div>
+            </div>
+
+            <!-- 成功卡（提交后由 JS 显示） -->
+            <div class="msg" id="successMsg" style="display:none">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="card">
+                  <div class="pipeline">
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>权限校验</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>生成幂等键</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>写入 OA</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>触发审批流</div>
+                  </div>
+                  <div class="success-band">
+                    <div class="success-check"><svg><use href="#i-check"/></svg></div>
+                    <div class="success-info">
+                      <b>销售订单创建成功</b>
+                      <div class="order-no">SO-20260915-0031</div>
+                      <span>已按幂等键防重提交 · 操作人：系统账号（代理人：EMP002345）</span>
+                    </div>
+                  </div>
+                  <div class="result-rows">
+                    <div class="result-row"><span class="rr-k">写入系统</span><span class="rr-v">OA · 销售管理模块</span><span class="rr-badge rb-green">成功</span></div>
+                    <div class="result-row"><span class="rr-k">审批流</span><span class="rr-v">销售主管 李强 → 财务复核 王芳（2 级）</span><span class="rr-badge rb-blue">流转中</span></div>
+                    <div class="result-row"><span class="rr-k">幂等键</span><span class="rr-v"><code>EMP002345_cv294_f38a_v2</code></span><span class="rr-badge rb-green">已记录 24h</span></div>
+                    <div class="result-row"><span class="rr-k">后续提醒</span><span class="rr-v">审批超 24h 未处理将主动提醒你（自动化任务）</span></div>
+                  </div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="toast('演示原型：跳转 OA 单据详情页','info')"><svg><use href="#i-ext"/></svg>在 OA 中查看</button>
+                    <button class="btn btn-success" onclick="toast('单据卡片已复制，可粘贴到企微群','ok')"><svg><use href="#i-file"/></svg>转发给同事</button>
+                  </div>
+                </div>
+                <div class="msg-time">09:44</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ================= 会话 2：待办审批 ================= -->
+          <div class="conv-page" id="conv-approve">
+            <div class="day-sep">今天 · 2026-09-15</div>
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">我有哪些待办审批？</div><div class="msg-time">10:15</div></div>
+            </div>
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">意图识别</span>
+                      <span class="th-step done">技能路由</span>
+                      <span class="th-step done">只读查询</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中 <code>oa_todo_approve</code> · 模式 <span class="ok">Craft</span>（同意/驳回按钮内置二次确认）</span></div>
+                    <div class="dt-row"><span class="dt-k">数据聚合</span><span>调用 <code>oa__query_pending_approvals</code> → 返回 3 条（已按你的审批权限过滤）</span></div>
+                  </div>
+                </div>
+                <div class="bubble">你有 <b>3 条待办审批</b>，其中 1 条已接近超时（规则：超 48h 上升提醒）：</div>
+
+                <div class="card" style="margin-top:12px">
+                  <div class="card-head">
+                    <div class="c-ico ico-amber"><svg><use href="#i-file"/></svg></div>
+                    <div class="c-title"><b>待办审批 · 3 条</b><span>来源：OA 工作流 · 数据范围：你的审批权限</span></div>
+                    <div class="c-badges"><span class="cbadge cb-skill"><svg><use href="#i-zap"/></svg>oa_todo_approve</span></div>
+                  </div>
+
+                  <div class="todo-item" id="todo1">
+                    <div class="todo-top">
+                      <div class="todo-ico ico-amber"><svg><use href="#i-cart"/></svg></div>
+                      <div class="todo-main">
+                        <b>请购单 · PR-20260912-0842</b>
+                        <div class="t-sub"><span>发起：采购科 陈晨</span><span class="amt">¥12,800.00</span><span>物料：铝外壳 × 2000</span><span class="wait-warn">⏱ 等待 41h · 接近超时</span></div>
+                      </div>
+                      <div class="todo-acts">
+                        <button class="mini-btn" onclick="toast('演示原型：展开单据详情与预算校验结果','info')">详情</button>
+                        <button class="mini-btn agree" onclick="askConfirm('todo1')">同意</button>
+                        <button class="mini-btn reject" onclick="toast('演示原型：驳回需填写意见','warn')">驳回</button>
+                      </div>
+                    </div>
+                    <div class="confirm-strip" id="confirm-todo1">
+                      <b>确认同意该请购单？</b>审批意见将记录"同意"并流转至下一节点（财务复核）。此操作经人工确认，不可撤销。
+                      <div class="cs-btns">
+                        <button class="mini-btn agree" onclick="doApprove('todo1','请购单 PR-20260912-0842')">确认同意</button>
+                        <button class="mini-btn" onclick="hideConfirm('todo1')">取消</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="todo-item" id="todo2">
+                    <div class="todo-top">
+                      <div class="todo-ico ico-blue"><svg><use href="#i-cart"/></svg></div>
+                      <div class="todo-main">
+                        <b>销售订单 · SO-20260914-0025</b>
+                        <div class="t-sub"><span>发起：销售科 刘洋</span><span class="amt">¥86,400.00</span><span>客户：东莞市精工科技</span><span>等待 6h</span></div>
+                      </div>
+                      <div class="todo-acts">
+                        <button class="mini-btn" onclick="toast('演示原型：展开单据详情','info')">详情</button>
+                        <button class="mini-btn agree" onclick="askConfirm('todo2')">同意</button>
+                        <button class="mini-btn reject" onclick="toast('演示原型：驳回需填写意见','warn')">驳回</button>
+                      </div>
+                    </div>
+                    <div class="confirm-strip" id="confirm-todo2">
+                      <b>确认同意该销售订单？</b>审批意见将记录"同意"并流转至下一节点（总经理审批）。
+                      <div class="cs-btns">
+                        <button class="mini-btn agree" onclick="doApprove('todo2','销售订单 SO-20260914-0025')">确认同意</button>
+                        <button class="mini-btn" onclick="hideConfirm('todo2')">取消</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="todo-item" id="todo3">
+                    <div class="todo-top">
+                      <div class="todo-ico ico-green"><svg><use href="#i-plane"/></svg></div>
+                      <div class="todo-main">
+                        <b>差旅报销 · ER-20260911-0067</b>
+                        <div class="t-sub"><span>发起：销售科 赵敏</span><span class="amt">¥3,120.00</span><span>出差：9/02-9/05 深圳客户拜访</span><span>等待 18h</span></div>
+                      </div>
+                      <div class="todo-acts">
+                        <button class="mini-btn" onclick="toast('演示原型：展开单据详情','info')">详情</button>
+                        <button class="mini-btn agree" onclick="askConfirm('todo3')">同意</button>
+                        <button class="mini-btn reject" onclick="toast('演示原型：驳回需填写意见','warn')">驳回</button>
+                      </div>
+                    </div>
+                    <div class="confirm-strip" id="confirm-todo3">
+                      <b>确认同意该报销单？</b>同意后金额进入本月部门费用核算。
+                      <div class="cs-btns">
+                        <button class="mini-btn agree" onclick="doApprove('todo3','差旅报销 ER-20260911-0067')">确认同意</button>
+                        <button class="mini-btn" onclick="hideConfirm('todo3')">取消</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="msg-time">10:15</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ================= 会话 3：BI 查询 ================= -->
+          <div class="conv-page" id="conv-bi">
+            <div class="day-sep">今天 · 2026-09-15</div>
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">查一下本月销售额，按产品线分，和上个月对比</div><div class="msg-time">14:20</div></div>
+            </div>
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">意图识别</span>
+                      <span class="th-step done">技能路由</span>
+                      <span class="th-step done">只读模式</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中 <code>bi_query</code> · 模式 <span class="ok">Ask（只问不写）</span>· 无需确认卡</span></div>
+                    <div class="dt-row"><span class="dt-k">意图转查询</span><span>指标=销售额 · 维度=产品线 · 对比=环比 · 时间=本月（2026-09）</span></div>
+                    <div class="dt-row"><span class="dt-k">权限</span><span>数据范围自动限定：<span class="ok">事业部A</span>（越权维度已过滤）</span></div>
+                    <div class="dt-row"><span class="dt-k">执行</span><span><code>bi__execute_query</code> → 返回 4 行 · 命中缓存（5 分钟内重复查询）</span></div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <div class="c-ico ico-green"><svg><use href="#i-chart"/></svg></div>
+                    <div class="c-title"><b>本月销售额 · 按产品线</b><span>2026-09-01 ~ 09-15 · 数据源 BI · 事业部A</span></div>
+                    <div class="c-badges"><span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>只读</span></div>
+                  </div>
+                  <div class="kpis">
+                    <div class="kpi"><div class="k-label"><svg><use href="#i-coin"/></svg>本月销售额（至今）</div><div class="k-value">¥8,420,000</div><div class="k-trend trend-up">▲ 环比 +12.3%</div></div>
+                    <div class="kpi"><div class="k-label"><svg><use href="#i-chart"/></svg>月度目标完成</div><div class="k-value">87.4%</div><div class="k-trend trend-up">▲ 时间进度 50%，快于时序</div></div>
+                    <div class="kpi"><div class="k-label"><svg><use href="#i-clock"/></svg>最大风险</div><div class="k-value" style="color:var(--amber)">工业模块</div><div class="k-trend trend-warn">▼ 环比 -8.1%，建议关注</div></div>
+                  </div>
+                  <div class="bi-table">
+                    <div class="bi-row"><span class="bi-name">5G 通信模块</span><div class="bi-bar-wrap"><div class="bi-bar" data-w="100%"></div></div><span class="bi-val">¥4.21M</span><span class="bi-pct">50.0%</span></div>
+                    <div class="bi-row"><span class="bi-name">物联网模组</span><div class="bi-bar-wrap"><div class="bi-bar" data-w="57%" style="background:linear-gradient(90deg,#34d399,#10b981)"></div></div><span class="bi-val">¥2.40M</span><span class="bi-pct">28.5%</span></div>
+                    <div class="bi-row"><span class="bi-name">射频器件</span><div class="bi-bar-wrap"><div class="bi-bar" data-w="30%" style="background:linear-gradient(90deg,#fbbf24,#f59e0b)"></div></div><span class="bi-val">¥1.27M</span><span class="bi-pct">15.1%</span></div>
+                    <div class="bi-row"><span class="bi-name">工业控制模块</span><div class="bi-bar-wrap"><div class="bi-bar" data-w="13%" style="background:linear-gradient(90deg,#f87171,#ef4444)"></div></div><span class="bi-val">¥0.54M</span><span class="bi-pct">6.4%</span></div>
+                  </div>
+                  <div class="perm-note"><svg><use href="#i-shield"/></svg>已按你的权限范围过滤（事业部A · 销售科可见维度）。导出明细需科室主管权限。</div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="toast('演示原型：追加维度，如按业务员/区域下钻','info')"><svg><use href="#i-chart"/></svg>继续下钻</button>
+                    <button class="btn btn-ghost" onclick="toast('演示原型：导出 xlsx（桌面端将直接落盘到授权目录）','info')"><svg><use href="#i-ext"/></svg>导出报表</button>
+                  </div>
+                </div>
+                <div class="msg-time">14:20</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ===== 输入区 ===== -->
+      <div class="composer-wrap">
+        <div class="composer">
+          <div class="mode-chips">
+            <span class="mc-label">执行模式</span>
+            <button class="mode-chip mc-ask" data-mode="ask" onclick="setMode(this,'ask')"><svg><use href="#i-shield"/></svg>只问不写</button>
+            <button class="mode-chip mc-plan" data-mode="plan" onclick="setMode(this,'plan')"><svg><use href="#i-chart"/></svg>先计划后执行</button>
+            <button class="mode-chip mc-craft active" data-mode="craft" onclick="setMode(this,'craft')"><svg><use href="#i-zap"/></svg>直接执行</button>
+            <span class="mode-hint"><svg><use href="#i-warn"/></svg>写入操作始终需确认卡（HITL），模式不豁免单步确认</span>
+          </div>
+          <div class="input-box">
+            <textarea id="inputArea" rows="1" placeholder="描述你的任务，如：帮我给深圳华强电子录一张销售订单…（Enter 发送）"></textarea>
+            <button class="attach-btn" title="附件 · 桌面端支持本地文件（local__ MCP 工具）">
+              <svg><use href="#i-clip"/></svg>
+              <span class="local-tag"><svg><use href="#i-monitor"/></svg></span>
+            </button>
+            <button class="send-btn" onclick="sendDemo()" title="发送"><svg><use href="#i-send"/></svg></button>
+          </div>
+          <div class="composer-foot">
+            <span>当前技能：oa_sales_order_entry · Craft 模式 · 幂等保护已开启</span>
+            <span>内容将由 AI 生成，关键操作需人工确认 · 操作全程审计</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ===== 右侧上下文面板 ===== -->
+    <aside class="ctx">
+      <div class="ctx-card">
+        <div class="ctx-head"><svg style="color:#4f46e5"><use href="#i-zap"/></svg>会话上下文</div>
+        <div class="ctx-body">
+          <div class="skill-flow">
+            <div class="sf-step hl"><span class="sf-dot">1</span>查客户（oa__query_customers）</div>
+            <div class="sf-line" style="height:8px"></div>
+            <div class="sf-step hl"><span class="sf-dot">2</span>带出默认值（客户主数据）</div>
+            <div class="sf-line" style="height:8px"></div>
+            <div class="sf-step hl"><span class="sf-dot">3</span>表单确认（HITL · 你）</div>
+            <div class="sf-line" style="height:8px"></div>
+            <div class="sf-step hl"><span class="sf-dot">4</span>写入 OA（幂等键保护）</div>
+          </div>
+        </div>
+      </div>
+      <div class="ctx-card">
+        <div class="ctx-head"><svg style="color:#0e9f6e"><use href="#i-brain"/></svg>记忆 · 自动引用</div>
+        <div class="ctx-body">
+          <div class="mem-item"><svg><use href="#i-user"/></svg><span class="mi-t"><b>常用客户</b>：深圳华强电子（本月第 6 次）</span></div>
+          <div class="mem-item"><svg><use href="#i-chart"/></svg><span class="mi-t"><b>偏好</b>：报表按产品线维度 · 导出 xlsx</span></div>
+          <div class="mem-item"><svg><use href="#i-clock"/></svg><span class="mi-t"><b>习惯</b>：交货日期偏好周四</span></div>
+          <div class="ctx-link" onclick="toast('演示原型：管理个人记忆（查看/纠错/删除）','info')">管理我的记忆<svg><use href="#i-chev"/></svg></div>
+        </div>
+      </div>
+      <div class="ctx-card">
+        <div class="ctx-head"><svg style="color:#4f46e5"><use href="#i-spark"/></svg>快捷技能</div>
+        <div class="ctx-body">
+          <div class="quick-grid">
+            <button class="qk-btn" onclick="toast('演示原型：发起请购单录入（oa_purchase_request）','info')"><svg><use href="#i-cart"/></svg>录请购单</button>
+            <button class="qk-btn" onclick="toast('演示原型：查询库存（Phase 2 WMS 技能）','warn')"><svg><use href="#i-grid"/></svg>查库存</button>
+            <button class="qk-btn" onclick="toast('演示原型：生成本周工作周报草稿（weekly_report）','info')"><svg><use href="#i-book"/></svg>生成周报</button>
+            <button class="qk-btn" onclick="toast('演示原型：创建自动化任务（Phase 2）','warn')"><svg><use href="#i-zap"/></svg>自动化</button>
+          </div>
+        </div>
+      </div>
+      <div class="ctx-card">
+        <div class="ctx-head"><svg style="color:#71798c"><use href="#i-monitor"/></svg>客户端能力</div>
+        <div class="ctx-body">
+          <div class="ctx-badge-row">
+            <span class="ctx-badge on"><svg><use href="#i-check"/></svg>桌面端在线</span>
+            <span class="ctx-badge on"><svg><use href="#i-check"/></svg>本地文件工具</span>
+            <span class="ctx-badge">Web 会话</span>
+          </div>
+          <div style="margin-top:8px;font-size:11px">local__* MCP 工具仅桌面会话可见；服务端自动化任务不可调用本地工具。</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+/* ---------- 会话切换 ---------- */
+const convHeads = {
+  order:{title:'销售订单录入',sub:'与 Agent 协作完成 OA 单据创建',skill:'oa_sales_order_entry',ver:'v1.2.0',mode:'craft',icon:'#i-cart'},
+  approve:{title:'待办审批',sub:'聚合 OA 待办 · 内置二次确认',skill:'oa_todo_approve',ver:'v1.0.3',mode:'craft',icon:'#i-file'},
+  bi:{title:'BI 数据查询',sub:'只读查询 · 权限范围内数据',skill:'bi_query',ver:'v1.1.0',mode:'ask',icon:'#i-chart'}
+};
+const modeCls={ask:['md-ask','只问不写'],plan:['md-plan','先计划后执行'],craft:['md-craft','直接执行']};
+function renderHead(k){
+  const h=convHeads[k],m=modeCls[h.mode];
+  document.getElementById('chatHead').innerHTML=`
+    <span class="skill-chip"><svg><use href="${h.icon}"/></svg>${h.skill}<span class="ver">${h.ver}</span></span>
+    <span class="head-sub">${h.sub}</span>
+    <span class="spacer"></span>
+    <div class="mode-display">模式 <span class="md-badge ${m[0]}">${m[1]}</span></div>`;
+}
+function switchConv(id){
+  document.querySelectorAll('.conv-page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.conv-item').forEach(c=>c.classList.toggle('active',c.dataset.conv===id));
+  document.getElementById('conv-'+id).classList.add('active');
+  renderHead(id);
+  const sc=document.getElementById('chatScroll');
+  sc.scrollTo({top:sc.scrollHeight});
+}
+
+/* ---------- 模式切换 ---------- */
+function setMode(btn,mode){
+  document.querySelectorAll('.mode-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  const tips={
+    ask:'已切换「只问不写」：仅调用只读工具，无写入、无需确认卡',
+    plan:'已切换「先计划后执行」：先展示执行计划卡（涉及系统/数据/影响范围），批准后逐步执行',
+    craft:'已切换「直接执行」：写入操作仍强制弹出确认卡（HITL），模式不豁免单步确认'
+  };
+  toast(tips[mode],'info');
+}
+
+/* ---------- 订单提交（HITL 演示） ---------- */
+function submitOrder(){
+  const btn=document.getElementById('btnSubmit');
+  const card=document.getElementById('orderCard');
+  if(btn.disabled)return;
+  btn.disabled=true;
+  btn.innerHTML='正在写入 OA…';
+  card.style.opacity='.75';
+  setTimeout(()=>{
+    card.style.display='none';
+    card.closest('.msg').querySelector('.think').classList.remove('open');
+    const suc=document.getElementById('successMsg');
+    suc.style.display='flex';
+    const sc=document.getElementById('chatScroll');
+    sc.scrollTo({top:sc.scrollHeight,behavior:'smooth'});
+    toast('销售订单 SO-20260915-0031 创建成功，审批流已触发','ok');
+    /* BI 条形图动画（若可见） */
+  },1400);
+}
+
+/* ---------- 审批二次确认（HITL 演示） ---------- */
+function askConfirm(id){document.getElementById('confirm-'+id).classList.add('show')}
+function hideConfirm(id){document.getElementById('confirm-'+id).classList.remove('show')}
+function doApprove(id,name){
+  hideConfirm(id);
+  const item=document.getElementById(id);
+  item.classList.add('done-handled');
+  const acts=item.querySelector('.todo-acts');
+  acts.innerHTML=`<span class="handled-tag"><svg><use href="#i-check"/></svg>已同意</span>`;
+  toast(`${name} 审批通过，已流转下一节点`,'ok');
+}
+
+/* ---------- 发送演示 ---------- */
+function sendDemo(){
+  const area=document.getElementById('inputArea');
+  const text=area.value.trim();
+  if(!text){toast('试试输入：帮我给深圳华强电子录一张销售订单','info');return}
+  /* 插入用户消息到当前会话 */
+  const page=document.querySelector('.conv-page.active');
+  const t=new Date().toTimeString().slice(0,5);
+  const div=document.createElement('div');
+  div.className='msg user';
+  div.innerHTML=`<div class="msg-avatar av-user">张</div><div class="msg-body"><div class="bubble"></div><div class="msg-time">${t}</div></div>`;
+  div.querySelector('.bubble').textContent=text;
+  page.appendChild(div);
+  area.value='';area.style.height='auto';
+  const sc=document.getElementById('chatScroll');
+  sc.scrollTo({top:sc.scrollHeight,behavior:'smooth'});
+  setTimeout(()=>{
+    const a=document.createElement('div');
+    a.className='msg';
+    a.innerHTML=`<div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div><div class="msg-body"><div class="bubble">（演示原型）这只是一条占位回复。本原型预置了 3 个完整场景，请点击左侧会话切换体验：<b>销售订单录入</b>（确认卡→幂等写入）、<b>待办审批</b>（二次确认）、<b>BI 查询</b>（只读模式+权限过滤）。</div><div class="msg-time">${t}</div></div>`;
+    page.appendChild(a);
+    sc.scrollTo({top:sc.scrollHeight,behavior:'smooth'});
+  },700);
+}
+
+/* ---------- Toast ---------- */
+function toast(msg,type='info'){
+  const icons={ok:'i-check',warn:'i-warn',info:'i-spark'};
+  const wrap=document.getElementById('toastWrap');
+  const el=document.createElement('div');
+  el.className='toast t-'+type;
+  el.innerHTML=`<svg><use href="#${icons[type]}"/></svg><span></span>`;
+  el.querySelector('span').textContent=msg;
+  wrap.appendChild(el);
+  setTimeout(()=>{el.classList.add('out');setTimeout(()=>el.remove(),260)},3400);
+}
+
+/* ---------- 输入框自适应 & 回车发送 ---------- */
+const area=document.getElementById('inputArea');
+area.addEventListener('input',()=>{area.style.height='auto';area.style.height=Math.min(area.scrollHeight,120)+'px'});
+area.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendDemo()}});
+
+/* ---------- 初始化 ---------- */
+renderHead('order');
+window.addEventListener('load',()=>{
+  /* BI 条形图动画 */
+  setTimeout(()=>{document.querySelectorAll('.bi-bar').forEach(b=>b.style.width=b.dataset.w)},300);
+  const sc=document.getElementById('chatScroll');
+  sc.scrollTo({top:sc.scrollHeight});
+});
+</script>
+</body>
+</html>
