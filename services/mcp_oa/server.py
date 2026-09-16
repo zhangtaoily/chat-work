@@ -2,7 +2,7 @@
 
 统一职责（所有 mcp-* 一致）：
 1. inputSchema 校验（pydantic，加载 packages/protocol 中的 JSON）
-2. 枚举值对齐（客户名/商品编码先调 OA 查询接口验证存在）
+2. 枚举值对齐（员工名/物料编码先调 OA 查询接口验证存在）
 3. Service Account 调 OA + 「代理人」双标记（PRD 8.5.5）
 4. 写入幂等（idempotency.py，PG 表，保留 24h）
 5. 健康探测 + tools 热注册
@@ -16,12 +16,14 @@ from mcp.server.fastmcp import FastMCP
 # 创建 MCP Server（Streamable HTTP 传输，经 APISIX /mcp/oa 路由）
 mcp = FastMCP(name="mcp-oa")
 
-# TODO: 注册工具（tools/customers.py、tools/sales_order.py、tools/approvals.py）
+# TODO: 注册工具（tools/leave.py、tools/expense.py、tools/purchase.py、tools/approvals.py）
 # from tools.approvals import register as register_approvals
-# from tools.customers import register as register_customers
-# from tools.sales_order import register as register_sales_order
-# register_customers(mcp)
-# register_sales_order(mcp)
+# from tools.expense import register as register_expense
+# from tools.leave import register as register_leave
+# from tools.purchase import register as register_purchase
+# register_leave(mcp)
+# register_expense(mcp)
+# register_purchase(mcp)
 # register_approvals(mcp)
 
 

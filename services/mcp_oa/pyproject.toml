@@ -2,7 +2,7 @@
 [project]
 name = "mcp-oa"
 version = "0.1.0"
-description = "OA MCP Server：客户查询/销售订单录入/审批（Streamable HTTP）"
+description = "OA MCP Server：请假/报销/请购/审批（流程审批，Streamable HTTP）"
 requires-python = ">=3.12"
 dependencies = [
     "mcp>=1.0",

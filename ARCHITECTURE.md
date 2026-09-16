@@ -10,6 +10,7 @@
 | v1.1 | 2026-09-15 | 响应"仅保留桌面端"决策：移除独立 Web 应用（apps/web 删除，renderer 并入 desktop 结构）；架构图/设计原则/技术栈/协议矩阵/部署（update-server MVP 起）/测试（Playwright Electron）联动更新；对应 PRD v1.7 |
 | v1.2 | 2026-09-16 | 对应 PRD v1.7.2 三处原型演示态的架构深化：新增 4.7 技能市场上架与安全评审（上架状态机/沙箱试运行/SLA 通道）、4.8 自动化任务（调度器/试运行 HITL/防护栏/执行身份）、6.2 ERP 复杂单据录入数据流（三级表单模型/物料歧义候选/全屏工作台/整单幂等）；4.2 展开 Phase 2 首批 mcp-crm / mcp-erp 模块设计；数据层/契约包/映射表联动更新 |
 | v1.3 | 2026-09-16 | 吸收 OpenClaw 三点设计：4.1 关键机制新增**会话串行化车道队列**（同会话请求/确认提交/自动化推送串行执行，消除草稿竞态，借鉴 Lane Queue）；新增 4.9 记忆离线固化与可迁移（借鉴 Dreaming：低峰期小模型聚合会话提炼 L2 候选 + 敏感字段前置过滤 + 衰减对齐；借鉴 MEMORY.md：L2 记忆 Markdown 导出/导入，对应 PRD 9.2 可感知性） |
+| v1.4 | 2026-09-16 | 业务定位纠正（对应 PRD v1.7.3）：OA 侧 MVP 聚焦流程审批——6.1 数据流改为**请假审批端到端**（查余额→抽取→时长自动计算→确认→幂等提交）；4.2 mcp_oa 工具组改为 leave/expense/purchase/approvals；销售订单录入迁入 Phase 2 mcp_crm（4.2 补 crm__create_sales_order + 客户主数据带出，第 7 章契约清单同步，新增 PRD 6.1.1 引用） |
 
 ---
 
@@ -212,8 +213,9 @@ graph.add_node("format", format_node)        # 渲染卡片 JSON（前端按类�
 mcp_oa/
 ├── server.py                 # MCP Server 入口（Streamable HTTP）
 ├── tools/
-│   ├── customers.py          # oa__query_customers / oa__get_customer_defaults
-│   ├── sales_order.py        # oa__create_sales_order（幂等写入）
+│   ├── leave.py              # oa__query_leave_balance（只读）/ oa__submit_leave_request（幂等写入）
+│   ├── expense.py            # oa__submit_expense_report（幂等写入，明细/总额自动计算）
+│   ├── purchase.py           # oa__submit_purchase_request（请购单，幂等写入）
 │   └── approvals.py          # oa__query_pending_approvals / oa__approve
 ├── schemas/                  # 从 packages/protocol 同步的 JSON Schema（CI 校验）
 ├── adapters/                 # OA OpenAPI 客户端（httpx，熔断+重试）
@@ -223,7 +225,7 @@ mcp_oa/
 **统一职责（所有 mcp-* 一致）：**
 
 1. `inputSchema` 校验（pydantic，加载 protocol JSON）
-2. 枚举值对齐（产品编码/客户名先调系统查询接口验证存在）
+2. 枚举值对齐（员工名/物料编码/客户名先调系统查询接口验证存在）
 3. Service Account 调业务系统 + `代理人` 双标记（PRD 8.5.5）
 4. 写入幂等（PG 幂等表，保留 24h）
 5. 健康探测 + tools 热注册（Agent Core 启动/定时 `tools/list` 刷新）
@@ -233,6 +235,9 @@ mcp_oa/
 ```
 mcp_crm/                                # 三大核心系统之三：销售下单/跟单（OpenAPI）
 ├── tools/
+│   ├── sales_order.py      # crm__create_sales_order（★ 销售订单录入（迁自 MVP 场景 1-1，
+│   │                        #   PRD 6.1.1）：幂等写入 + 提交审批）
+│   ├── customers.py        # crm__query_customers / crm__get_customer_defaults（客户主数据带出）
 │   ├── contracts.py        # crm__query_contracts（跟单：订单进度/到期/回款条件）
 │   ├── receivables.py      # crm__query_receivables（回款情况，只读）
 │   └── remark.py           # crm__update_contract_remark（写入类：跟单备注）
@@ -423,30 +428,32 @@ draft（来源三选：会话转换[推荐，参数自动带入] / 模板创建 
 
 ## 6. 关键数据流
 
-### 6.1 销售订单录入（OA，MVP，端到端）
+### 6.1 请假审批（OA，MVP，端到端）
 
 ```
 用户          agent-core                mcp-oa            OA系统
- │ "录订单5G模块500个" │                     │                 │
+ │ "我要请两天年假" │                     │                 │
  │──HTTPS POST /chat──▶│                     │                 │
  │                     │ ①意图+技能路由(小模型) │                 │
- │                     │ ②oa__query_customers │                 │
+ │                     │ ②oa__query_leave_balance │             │
  │                     │───MCP call─────────▶│──OpenAPI───────▶│
- │                     │◀──客户+默认值────────│◀────────────────│
- │◀─SSE: 思考块+追问"交货日期?"                │                 │
- │ "10月15号"           │                     │                 │
- │──HTTPS POST /chat──▶│ ③补参→Schema校验→权限 │                 │
+ │                     │◀──年假余额5天────────│◀────────────────│
+ │◀─SSE: 思考块+追问"从哪天开始?"            │                 │
+ │ "下周四开始"         │                     │                 │
+ │──HTTPS POST /chat──▶│ ③补参→时长自动计算→Schema校验→权限     │
  │◀─SSE: 确认卡(草稿v2+confirm_token)         │                 │
  │ [点击"确认提交"]      │                     │                 │
  │─POST /confirmations/tok─▶ ④验token→生成幂等键│                │
- │                     │ ⑤oa__create_sales_order(+幂等键)         │
+ │                     │ ⑤oa__submit_leave_request(+幂等键)      │
  │                     │───MCP call─────────▶│──查幂等表→写入──▶│
- │                     │◀──单据号SO-xxx──────│◀────────────────│
+ │                     │◀──审批单号LE-xxx────│◀────────────────│
  │◀─SSE: 成功卡(单号/审批流/审计标记)          │                 │
- │                     │ ⑥异步: 审计日志 + L2记忆(常用客户+1)      │
+ │                     │ ⑥异步: 审计日志 + L2记忆(请假偏好+1)     │
 ```
 
 异常分支：⑤ 超时 → 同幂等键调 `oa__get_idempotency_result` → 有结果返回单号 / 无记录查当日同参单据 → 均未知则提示用户勿重复提交（PRD 8.7 流程）。
+
+> 销售订单录入（CRM，Phase 2，PRD 6.1.1）端到端数据流与本章同构：客户匹配/默认值带出走 `crm__query_customers` / `crm__get_customer_defaults`（mcp-crm），写入走 `crm__create_sales_order`，录入后提交审批。
 
 ### 6.2 ERP 复杂单据录入（Phase 2：主表上百字段 + 子表 + 孙表批次）
 
@@ -499,8 +506,9 @@ draft（来源三选：会话转换[推荐，参数自动带入] / 模板创建 
 ```
 packages/protocol/
 ├── tools/
-│   ├── oa__create_sales_order.json   # MCP inputSchema + annotations(_meta: hitl/idempotency/requiredPermissions)
-│   ├── oa__query_customers.json
+│   ├── oa__submit_leave_request.json # MCP inputSchema + annotations(_meta: hitl/idempotency/requiredPermissions)
+│   ├── oa__query_leave_balance.json
+│   ├── crm__create_sales_order.json  # Phase 2：销售订单录入（PRD 6.1.1，_meta: hitl/idempotency）
 │   ├── bi__execute_query.json
 │   ├── erp__search_materials.json    # Phase 2：Top-N 候选，_meta.rw: read（候选卡数据源）
 │   ├── erp__create_sales_order.json  # Phase 2：三级整单结构，_meta.idempotencyRequired: true（整单粒度）

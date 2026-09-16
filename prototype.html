@@ -890,9 +890,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
           <div class="conv-ico ci-order"><svg><use href="#i-grid"/></svg></div>
           <div class="conv-meta"><b>ERP 复杂单据</b><span>多级明细 · 12 行物料</span></div>
         </div>
+        <div class="conv-item" data-conv="leave" onclick="switchConv('leave')">
+          <div class="conv-ico ci-bi"><svg><use href="#i-plane"/></svg></div>
+          <div class="conv-meta"><b>请假审批</b><span>LE-20260916-0012 已提交</span></div>
+        </div>
       </div>
       <div class="sidebar-foot">
-        <div class="my-skills"><span><b>我的技能</b> · 5 个</span><span style="color:var(--primary);cursor:pointer;font-weight:600" onclick="switchView('market')">市场</span></div>
+        <div class="my-skills"><span><b>我的技能</b> · 6 个</span><span style="color:var(--primary);cursor:pointer;font-weight:600" onclick="switchView('market')">市场</span></div>
+        <div class="skill-pill" style="cursor:pointer" onclick="switchConv('leave')"><svg style="color:#0284c7"><use href="#i-plane"/></svg>请假审批</div>
         <div class="skill-pill" style="cursor:pointer" onclick="switchConv('order')"><svg style="color:#4f46e5"><use href="#i-cart"/></svg>销售订单录入</div>
         <div class="skill-pill" style="cursor:pointer" onclick="switchConv('approve')"><svg style="color:#d97706"><use href="#i-file"/></svg>待办审批</div>
         <div class="skill-pill" style="cursor:pointer" onclick="switchConv('bi')"><svg style="color:#0e9f6e"><use href="#i-chart"/></svg>BI 数据查询</div>
@@ -938,9 +943,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
                   </div>
                   <div class="think-detail">
                     <div class="dt-row"><span class="dt-k">意图识别</span><span>单据录入 / 销售订单（置信度 0.96）</span></div>
-                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中技能 <code>oa_sales_order_entry</code>（匹配问法"录一张销售订单"）</span></div>
+                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中技能 <code>crm_sales_order_entry</code>（匹配问法"录一张销售订单"）</span></div>
                     <div class="dt-row"><span class="dt-k">参数提取</span><span>客户名=深圳华强电子 · 产品=5G通信模块 · 数量=500<span class="warn-t">　⚠ 交货日期缺失（必填）</span></span></div>
-                    <div class="dt-row"><span class="dt-k">客户匹配</span><span>调用 <code>oa__query_customers</code> → 精确匹配 1 家：<span class="ok">深圳华强电子有限公司（事业部A）</span></span></div>
+                    <div class="dt-row"><span class="dt-k">客户匹配</span><span>调用 <code>crm__query_customers</code> → 精确匹配 1 家：<span class="ok">深圳华强电子有限公司（事业部A）</span></span></div>
                   </div>
                 </div>
                 <div class="bubble">好的，找到客户 <span class="hl">深圳华强电子有限公司</span>（事业部A，月结客户）。产品 "5G 通信模块" 已对齐系统编码 <b>SP-1024</b>，单价将带出最新协议价。<br><br>还差一项必填信息——<b>交货日期</b>是哪天？</div>
@@ -979,7 +984,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
                 <div class="card" id="orderCard">
                   <div class="card-head">
                     <div class="c-ico ico-blue"><svg><use href="#i-cart"/></svg></div>
-                    <div class="c-title"><b>销售订单 · 请确认后写入 OA</b><span>技能 oa_sales_order_entry · 草稿 v2</span></div>
+                    <div class="c-title"><b>销售订单 · 请确认后写入 CRM</b><span>技能 crm_sales_order_entry · 草稿 v2</span></div>
                     <div class="c-badges">
                       <span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>直接执行</span>
                       <span class="cbadge cb-perm"><svg><use href="#i-shield"/></svg>权限已校验</span>
@@ -1204,6 +1209,188 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
           </div>
 
           <!-- ================= 会话 4：ERP 复杂单据（主表·子表·孙表） ================= -->
+          <!-- ================= 会话 5：请假审批（OA 流程审批，MVP 场景 1-1） ================= -->
+          <div class="conv-page" id="conv-leave">
+            <div class="sys-note">
+              <svg><use href="#i-shield"/></svg>
+              <div>已通过 SSO 登录（AD 域）· 身份 <b>张明 · 销售科</b> · 权限范围：<b>OA 请假单读写</b><span class="sep">|</span>年假/调休余额查询<span class="sep">|</span>操作均记录审计日志</div>
+            </div>
+            <div class="day-sep">今天 · 2026-09-16</div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">我要请两天年假</div><div class="msg-time">09:50</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done"><svg style="width:9px;height:9px"><use href="#i-check"/></svg>意图识别</span>
+                      <span class="th-step done">技能路由</span>
+                      <span class="th-step warn">参数 3/5</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">意图识别</span><span>流程审批 / 请假-年假（置信度 0.97）</span></div>
+                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中技能 <code>oa_leave_request</code>（匹配问法"我要请假"）</span></div>
+                    <div class="dt-row"><span class="dt-k">参数提取</span><span>类型=年假 · 时长=2 天<span class="warn-t">　⚠ 起止时间缺失（必填）</span></span></div>
+                    <div class="dt-row"><span class="dt-k">余额查询</span><span>调用 <code>oa__query_leave_balance</code> → 年假余额 <span class="ok">5 天</span>（人事系统实时，扣 2 天后剩 3 天）</span></div>
+                  </div>
+                </div>
+                <div class="bubble">好的，你的年假余额 <span class="hl">5 天</span>（本次扣 2 天后剩 3 天）。还差必填信息——<b>从哪天开始</b>请假？</div>
+                <div class="msg-time">09:50</div>
+              </div>
+            </div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">下周四开始，9 月 24 号</div><div class="msg-time">09:51</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">参数 5/5</span>
+                      <span class="th-step done">Schema 校验通过</span>
+                      <span class="th-step done">权限校验通过</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">参数提取</span><span>开始=2026-09-24（自然语言解析）· 结束=按时长反推 <span class="ok">09-25 18:00</span></span></div>
+                    <div class="dt-row"><span class="dt-k">时长计算</span><span>09-24 09:00 → 09-25 18:00 = <span class="ok">2 天</span>（工作日口径，自动计算）</span></div>
+                    <div class="dt-row"><span class="dt-k">Schema</span><span>5/5 字段通过 <code>inputSchema</code> 校验 · 枚举「年假」合法</span></div>
+                    <div class="dt-row"><span class="dt-k">权限</span><span><code>oa:leave_request:create</code> <span class="ok">✓ 允许</span> · 数据范围：本人</span></div>
+                  </div>
+                </div>
+                <!-- 请假确认卡（HITL）v1：事由缺失 -->
+                <div class="card" id="leaveCard">
+                  <div class="card-head">
+                    <div class="c-ico ico-blue"><svg><use href="#i-plane"/></svg></div>
+                    <div class="c-title"><b>请假申请 · 请确认后写入 OA</b><span>技能 oa_leave_request · 草稿 v1</span></div>
+                    <div class="c-badges">
+                      <span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>直接执行</span>
+                      <span class="cbadge cb-perm"><svg><use href="#i-shield"/></svg>权限已校验</span>
+                    </div>
+                  </div>
+                  <div class="form-rows">
+                    <div class="form-row"><div class="f-label">请假类型<span class="req">*</span></div><div class="f-value">年假</div><span class="f-tag t-sys">系统校验</span></div>
+                    <div class="form-row"><div class="f-label">开始时间<span class="req">*</span></div><div class="f-value">2026-09-24 09:00（周四）</div><span class="f-tag t-ask">对话获得</span></div>
+                    <div class="form-row"><div class="f-label">结束时间<span class="req">*</span></div><div class="f-value">2026-09-25 18:00（周五）</div><span class="f-tag t-def">按时长反推</span></div>
+                    <div class="form-row"><div class="f-label">请假时长<span class="req">*</span></div><div class="f-value">2 天（工作日口径）</div><span class="f-tag t-calc">自动计算</span></div>
+                    <div class="form-row"><div class="f-label">请假事由<span class="req">*</span></div><div class="f-value" style="color:#dc2626">？ 必填缺失</div><span class="f-tag t-ask">待追问</span></div>
+                    <div class="form-row"><div class="f-label">年假余额</div><div class="f-value">5 天 → 扣减后 <b>3 天</b></div><span class="f-tag t-sys">系统实时</span></div>
+                    <div class="form-row"><div class="f-label">审批流</div><div class="f-value">直属主管 → HR 备案（&lt; 3 天免部门总监）</div><span class="f-tag t-sys">规则路由</span></div>
+                  </div>
+                  <div class="card-hint"><svg><use href="#i-warn"/></svg>事由为必填项（不可由 Agent 编造），请补充：请假事由是什么？</div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="toast('演示原型：此处进入字段编辑模式，修改后生成草稿 v2','info')"><svg><use href="#i-edit"/></svg>修改字段</button>
+                  </div>
+                </div>
+                <div class="msg-time">09:51</div>
+              </div>
+            </div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">家里有事。结束时间改到 25 号中午 12 点</div><div class="msg-time">09:52</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">参数 6/6</span>
+                      <span class="th-step done">时长重算 1.5 天</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">参数提取</span><span>事由=<span class="ok">家里有事</span>（必填项已补齐）</span></div>
+                    <div class="dt-row"><span class="dt-k">变更应用</span><span>结束时间 09-25 <s style="color:var(--faint)">18:00</s> → <b>12:00</b> · 时长 <s style="color:var(--faint)">2 天</s> → <b>1.5 天</b>（联动重算）</span></div>
+                    <div class="dt-row"><span class="dt-k">余额复核</span><span>扣 1.5 天后剩 <span class="ok">3.5 天</span></span></div>
+                  </div>
+                </div>
+                <!-- 请假确认卡（HITL）v2：字段补齐 + 变更高亮 -->
+                <div class="card" id="leaveCard2">
+                  <div class="card-head">
+                    <div class="c-ico ico-blue"><svg><use href="#i-plane"/></svg></div>
+                    <div class="c-title"><b>请假申请 · 请确认后写入 OA</b><span>技能 oa_leave_request · 草稿 v2</span></div>
+                    <div class="c-badges">
+                      <span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>直接执行</span>
+                      <span class="cbadge cb-perm"><svg><use href="#i-shield"/></svg>权限已校验</span>
+                    </div>
+                  </div>
+                  <div class="form-rows">
+                    <div class="form-row"><div class="f-label">请假类型<span class="req">*</span></div><div class="f-value">年假</div><span class="f-tag t-sys">系统校验</span></div>
+                    <div class="form-row"><div class="f-label">开始时间<span class="req">*</span></div><div class="f-value">2026-09-24 09:00（周四）</div><span class="f-tag t-ask">对话获得</span></div>
+                    <div class="form-row"><div class="f-label">结束时间<span class="req">*</span></div><div class="f-value">2026-09-25 <s style="color:var(--faint)">18:00</s> → <b style="color:#4f46e5">12:00</b>（周五）</div><span class="f-tag t-ask">已修改</span></div>
+                    <div class="form-row"><div class="f-label">请假时长<span class="req">*</span></div><div class="f-value"><s style="color:var(--faint)">2 天</s> → <b style="color:#4f46e5">1.5 天</b>（工作日口径）</div><span class="f-tag t-calc">联动重算</span></div>
+                    <div class="form-row"><div class="f-label">请假事由<span class="req">*</span></div><div class="f-value">家里有事</div><span class="f-tag t-ask">对话获得</span></div>
+                    <div class="form-row"><div class="f-label">年假余额</div><div class="f-value">5 天 → 扣减后 <b>3.5 天</b></div><span class="f-tag t-sys">系统实时</span></div>
+                    <div class="form-row"><div class="f-label">审批流</div><div class="f-value">直属主管 李强 → HR 备案（1.5 天 &lt; 3 天，免部门总监）</div><span class="f-tag t-sys">规则路由</span></div>
+                  </div>
+                  <div class="card-hint"><svg><use href="#i-warn"/></svg>确认后将写入 OA 提交请假申请并进入审批流。此操作经人工确认（HITL），如需撤销请在审批完成前撤回。</div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="toast('演示原型：此处进入字段编辑模式，修改后生成草稿 v3','info')"><svg><use href="#i-edit"/></svg>修改字段</button>
+                    <button class="btn btn-primary" onclick="submitLeave(this)"><svg><use href="#i-check"/></svg>确认提交</button>
+                  </div>
+                </div>
+                <div class="msg-time">09:52</div>
+              </div>
+            </div>
+
+            <!-- 成功卡（提交后由 JS 显示） -->
+            <div class="msg" id="leaveSuccess" style="display:none">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="card">
+                  <div class="pipeline">
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>权限校验</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>生成幂等键</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>写入 OA</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>通知审批人</div>
+                  </div>
+                  <div class="success-band">
+                    <div class="success-check"><svg><use href="#i-check"/></svg></div>
+                    <div class="success-info">
+                      <b>请假申请提交成功</b>
+                      <div class="order-no">LE-20260916-0012</div>
+                      <span>已按幂等键防重提交 · 操作人：系统账号（代理人：EMP002345）</span>
+                    </div>
+                  </div>
+                  <div class="result-rows">
+                    <div class="result-row"><span class="rr-k">写入系统</span><span class="rr-v">OA · 人事考勤模块</span><span class="rr-badge rb-green">成功</span></div>
+                    <div class="result-row"><span class="rr-k">审批流</span><span class="rr-v">直属主管 李强 → HR 备案（1.5 天 &lt; 3 天免总监）</span><span class="rr-badge rb-blue">流转中</span></div>
+                    <div class="result-row"><span class="rr-k">余额变化</span><span class="rr-v">年假 5 天 → 扣减后 3.5 天</span><span class="rr-badge rb-green">已同步</span></div>
+                    <div class="result-row"><span class="rr-k">幂等键</span><span class="rr-v"><code>EMP002345_lv102_a71c_v2</code></span><span class="rr-badge rb-green">已记录 24h</span></div>
+                    <div class="result-row"><span class="rr-k">后续提醒</span><span class="rr-v">审批超 24h 未处理将主动提醒你（自动化任务）</span></div>
+                  </div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="toast('演示原型：跳转 OA 请假单详情页','info')"><svg><use href="#i-ext"/></svg>在 OA 中查看</button>
+                    <button class="btn btn-success" onclick="toast('请假卡片已复制，可粘贴到企微群','ok')"><svg><use href="#i-file"/></svg>转发给同事</button>
+                  </div>
+                </div>
+                <div class="msg-time">09:53</div>
+              </div>
+            </div>
+          </div>
+
           <div class="conv-page" id="conv-erp">
             <div class="sys-note">
               <svg><use href="#i-shield"/></svg>
@@ -1443,7 +1630,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
             <button class="send-btn" onclick="sendDemo()" title="发送"><svg><use href="#i-send"/></svg></button>
           </div>
           <div class="composer-foot">
-            <span>当前技能：oa_sales_order_entry · Craft 模式 · 幂等保护已开启</span>
+            <span>当前技能：crm_sales_order_entry · Craft 模式 · 幂等保护已开启</span>
             <span>内容将由 AI 生成，关键操作需人工确认 · 操作全程审计</span>
           </div>
         </div>
@@ -1851,7 +2038,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
         <div class="ctx-head"><svg style="color:#4f46e5"><use href="#i-zap"/></svg>会话上下文</div>
         <div class="ctx-body">
           <div class="skill-flow">
-            <div class="sf-step hl"><span class="sf-dot">1</span>查客户（oa__query_customers）</div>
+            <div class="sf-step hl"><span class="sf-dot">1</span>查客户（crm__query_customers）</div>
             <div class="sf-line" style="height:8px"></div>
             <div class="sf-step hl"><span class="sf-dot">2</span>带出默认值（客户主数据）</div>
             <div class="sf-line" style="height:8px"></div>
@@ -2342,11 +2529,22 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 <script>
 /* ---------- 会话切换 ---------- */
 const convHeads = {
-  order:{title:'销售订单录入',sub:'与 Agent 协作完成 OA 单据创建',skill:'oa_sales_order_entry',ver:'v1.2.0',mode:'craft',icon:'#i-cart'},
+  order:{title:'销售订单录入',sub:'与 Agent 协作完成 CRM 订单创建并提交审批',skill:'crm_sales_order_entry',ver:'v1.2.0',mode:'craft',icon:'#i-cart'},
   approve:{title:'待办审批',sub:'聚合 OA 待办 · 内置二次确认',skill:'oa_todo_approve',ver:'v1.0.3',mode:'craft',icon:'#i-file'},
   bi:{title:'BI 数据查询',sub:'只读查询 · 权限范围内数据',skill:'bi_query',ver:'v1.1.0',mode:'ask',icon:'#i-chart'},
-  erp:{title:'ERP 复杂单据录入',sub:'主表 · 子表 · 孙表 三级结构 · 物料库 12,847 条',skill:'erp_sales_order_entry',ver:'v0.9.0',mode:'craft',icon:'#i-grid'}
+  erp:{title:'ERP 复杂单据录入',sub:'主表 · 子表 · 孙表 三级结构 · 物料库 12,847 条',skill:'erp_sales_order_entry',ver:'v0.9.0',mode:'craft',icon:'#i-grid'},
+  leave:{title:'请假审批',sub:'年假余额校验 · 时长自动计算 · HITL 确认',skill:'oa_leave_request',ver:'v1.0.0',mode:'craft',icon:'#i-plane'}
 };
+function submitLeave(btn){
+  btn.disabled=true;
+  btn.innerHTML='<svg><use href="#i-check"/></svg>提交中…';
+  setTimeout(()=>{
+    document.getElementById('leaveSuccess').style.display='';
+    const sc=document.getElementById('chatScroll');
+    sc.scrollTo({top:sc.scrollHeight,behavior:'smooth'});
+    toast('请假单 LE-20260916-0012 已提交 · 审批流：直属主管 → HR 备案','ok');
+  },600);
+}
 const modeCls={ask:['md-ask','只问不写'],plan:['md-plan','先计划后执行'],craft:['md-craft','直接执行']};
 function renderHead(k){
   const h=convHeads[k],m=modeCls[h.mode];

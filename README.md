@@ -1,6 +1,6 @@
 # chat-work
 
-企业内网 AI Agent（Electron 桌面端，唯一客户端）。MVP 覆盖 **OA 单据录入**（销售订单/审批）与 **BI 自然语言查询**；技术基调：Python（服务端）+ TypeScript（客户端）。
+企业内网 AI Agent（Electron 桌面端，唯一客户端）。MVP 覆盖 **OA 流程审批**（请假/报销/请购录入与待办审批）与 **BI 自然语言查询**；销售订单录入（CRM，提交审批）为 Phase 2（PRD 6.1.1）；技术基调：Python（服务端）+ TypeScript（客户端）。
 
 ## 文档
 
