@@ -1,0 +1,15 @@
+{
+  "name": "@chat-work/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "由 agent_core FastAPI OpenAPI 自动生成的 TS SDK + 请求封装（scripts.gen 为占位命令：从 agent_core 的 /openapi.json 生成）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "gen": "openapi-typescript http://localhost:8000/openapi.json -o src/generated/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@chat-work/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "纯工具包：时间/金额格式化、枚举常量（无 UI 依赖）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

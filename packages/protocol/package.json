@@ -1,0 +1,15 @@
+{
+  "name": "@chat-work/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "共享契约源：MCP 工具 JSON Schema + SSE 事件类型（双语言之源，ARCHITECTURE 第 7 章）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "gen:types": "json-schema-to-typescript \"tools/*.json\" --output src/generated/"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.0"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "bi__execute_query",
+  "description": "自然语言 BI 数据查询（只读：仅 SELECT 语义，禁止任何写操作）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "title": "查询问题",
+        "description": "自然语言查询问题（如：本月各科室销售额对比）"
+      },
+      "dimensions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "title": "分析维度",
+        "description": "可选：限定分析维度（如科室/月份/产品线）"
+      }
+    },
+    "required": ["query"]
+  },
+  "annotations": {
+    "title": "BI 数据查询",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["bi:query:read"]
+    }
+  }
+}

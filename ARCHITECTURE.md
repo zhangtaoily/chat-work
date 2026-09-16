@@ -1,6 +1,6 @@
 # Chat-Work Agent 技术架构规划
 
-> 配套文档：[PRD-chat-work-agent.md](./PRD-chat-work-agent.md)（v1.7）｜ 交互原型：[prototype.html](./prototype.html)
+> 配套文档：[PRD-chat-work-agent.md](./PRD-chat-work-agent.md)（v1.7.2）｜ 交互原型：[prototype.html](./prototype.html)
 >
 > 技术基调：**Python（服务端） + TypeScript（客户端） + Electron（桌面端，MVP 唯一客户端，无独立 Web 应用）**
 
@@ -8,6 +8,8 @@
 |------|------|------|
 | v1.0 | 2026-09-15 | 初版：总体架构、Monorepo 工程结构、模块设计、协议矩阵、关键数据流、共享契约、部署架构、工程化规范 |
 | v1.1 | 2026-09-15 | 响应"仅保留桌面端"决策：移除独立 Web 应用（apps/web 删除，renderer 并入 desktop 结构）；架构图/设计原则/技术栈/协议矩阵/部署（update-server MVP 起）/测试（Playwright Electron）联动更新；对应 PRD v1.7 |
+| v1.2 | 2026-09-16 | 对应 PRD v1.7.2 三处原型演示态的架构深化：新增 4.7 技能市场上架与安全评审（上架状态机/沙箱试运行/SLA 通道）、4.8 自动化任务（调度器/试运行 HITL/防护栏/执行身份）、6.2 ERP 复杂单据录入数据流（三级表单模型/物料歧义候选/全屏工作台/整单幂等）；4.2 展开 Phase 2 首批 mcp-crm / mcp-erp 模块设计；数据层/契约包/映射表联动更新 |
+| v1.3 | 2026-09-16 | 吸收 OpenClaw 三点设计：4.1 关键机制新增**会话串行化车道队列**（同会话请求/确认提交/自动化推送串行执行，消除草稿竞态，借鉴 Lane Queue）；新增 4.9 记忆离线固化与可迁移（借鉴 Dreaming：低峰期小模型聚合会话提炼 L2 候选 + 敏感字段前置过滤 + 衰减对齐；借鉴 MEMORY.md：L2 记忆 Markdown 导出/导入，对应 PRD 9.2 可感知性） |
 
 ---
 
@@ -31,8 +33,8 @@
 │  agent-core（FastAPI + LangGraph）                                            │
 │  ├─ Agent 流水线：意图识别 → 技能/工具路由 → 参数提取 → Schema校验              │
 │  │   → 权限校验 → HITL 确认卡 → 执行 → 格式化（PRD 4.1）                       │
-│  ├─ Skill Registry（技能注册/匹配）+ LangGraph SubGraph 编排（PRD 3.2）       │
-│  ├─ Automation Scheduler（定时/事件触发，APScheduler + Redis 锁，PRD 3.6）    │
+│  ├─ Skill Registry + Market（注册/匹配/上架评审，PRD 3.2/3.4/3.5）            │
+│  ├─ Automation（调度/试运行 HITL/推送，APScheduler + Redis 锁，PRD 3.6）      │
 │  ├─ Memory Service（L1-L4 记忆，PRD 9.1） ──► Milvus / Redis                  │
 │  ├─ Knowledge Service（RAG 切片/检索/注入，PRD 9.5）──► Milvus                │
 │  └─ Guardrail：确认卡管理 / 幂等键管理 / 审计埋点（PRD 8.7 / 10）              │
@@ -40,7 +42,7 @@
           │ MCP（Streamable HTTP，MVP 用 SSE）
           ▼
 ┌───────────────────── 集成层（Python，每系统独立进程）────────────────────────┐
-│  mcp-oa（OA 封装）   mcp-bi（BI 封装）   mcp-crm / mcp-erp / …（Phase 2）    │
+│  mcp-oa（OA）  mcp-bi（BI）  mcp-crm / mcp-erp / mcp-wms（Phase 2 首批接入） │
 │  统一职责：inputSchema 校验 / 枚举值对齐 / Service Account / 幂等记录 / 熔断   │
 └─────────┬────────────────────────────────────────────────────────────────────┘
           │ HTTPS OpenAPI / JDBC / RPA / 文件（PRD 8.2）
@@ -114,15 +116,18 @@ chat-work/
 │   │   ├── agent_core/
 │   │   │   ├── api/                     # FastAPI 路由（对话 SSE/确认卡/技能/记忆）
 │   │   │   ├── pipeline/                # 流水线阶段：intent/route/extract/validate/execute
-│   │   │   ├── skills/                  # Skill Registry + LangGraph 编排 + 表单 Schema
+│   │   │   ├── skills/                  # Skill Registry + Market（上架评审，见 4.7）
 │   │   │   ├── memory/                  # L1-L4 记忆读写与检索注入
 │   │   │   ├── knowledge/               # RAG：入库/切片/检索/注入
 │   │   │   ├── guardrail/               # HITL 状态机 / 幂等键 / 权限缓存
-│   │   │   ├── automation/              # 调度器 + 推送（Phase 2）
+│   │   │   ├── automation/              # 调度/试运行 HITL/推送/模板（Phase 2，见 4.8）
 │   │   │   └── mcp_client/              # MCP Client（多 Server 连接池/能力协商）
 │   │   └── tests/
 │   ├── mcp_oa/                          # OA MCP Server（tools：oa__*）
 │   ├── mcp_bi/                          # BI MCP Server（tools：bi__*）
+│   ├── mcp_crm/                         # CRM MCP Server（tools：crm__*，Phase 2）
+│   ├── mcp_erp/                         # ERP MCP Server（tools：erp__*，Phase 2）
+│   ├── mcp_wms/                         # WMS MCP Server（tools：wms__*，Phase 2）
 │   └── mcp_local/  ← 不放这里（在 apps/desktop/local-mcp，TS 实现，随端分发）
 ├── packages/                            # TS 共享包
 │   ├── protocol/                        # ★ 契约源：MCP 工具 JSON Schema（.json）
@@ -193,8 +198,11 @@ graph.add_node("format", format_node)        # 渲染卡片 JSON（前端按类�
 | 幂等键 | `hitl` 通过后生成 `{userId}_{sessionId}_{intentHash}_{draftVersion}`，随 `tools/call` 传 `_idempotencyKey`（PRD 8.7） |
 | 记忆注入 | `extract` 前置钩子：L2 个人记忆（Milvus 检索 Top-3，≤300 Token）+ 技能绑定知识（≤800 Token） |
 | 流式输出 | SSE 推送阶段事件（`stage_progress`/`draft_card`/`confirm_card`/`final`），前端按事件渲染"思考与执行"折叠块 |
+| 会话串行化（车道队列） | 每会话一条 FIFO 队列（Redis `session_lane:{sessionId}`）：对话请求、确认卡提交、自动化试运行推送**同会话排队串行执行**，消除草稿状态与 confirm token 的并发竞态（借鉴 OpenClaw Lane Queue） |
 | 工具能力协商 | 会话建立时带客户端能力（桌面端 + local-file；Phase 3 小程序无本地工具），MCP Client 只向 LLM 暴露可用工具集（PRD 5.5.5） |
 | 权限 | `route` 前用 `perm_ver` 查 Redis 权限缓存，过滤技能/工具白名单（PRD 8.5.4） |
+
+**复杂单据扩展（Phase 2 ERP，见 6.2 数据流）：** `FormDraft` 支持三级嵌套结构——`header`（主表字段 + **分组元数据** `groups`，驱动工作台分组折叠）、`lines[]`（子表行，每行 `material_ref` 指向已选物料候选）、`batches`（孙表，不随草稿加载，钻取时按行拉取）。**分步抽参**：主表上百字段不整体进 LLM 上下文——Schema 按分组裁剪，LLM 只处理对话提及的字段，其余分组在工作台标记"待补"。每个字段携带来源标记 `source`（`default` / `memory` / `ask` / `computed`），渲染为字段来源徽标；用户修改字段 → 草稿版本 +1 → 生成 `diff_card`（旧值删除线 → 新值，金额类字段联动重算）并产生新幂等键。
 
 ### 4.2 mcp-servers（Python / 官方 MCP SDK）
 
@@ -220,13 +228,52 @@ mcp_oa/
 4. 写入幂等（PG 幂等表，保留 24h）
 5. 健康探测 + tools 热注册（Agent Core 启动/定时 `tools/list` 刷新）
 
+**Phase 2 首批接入（PRD 6.1）：**
+
+```
+mcp_crm/                                # 三大核心系统之三：销售下单/跟单（OpenAPI）
+├── tools/
+│   ├── contracts.py        # crm__query_contracts（跟单：订单进度/到期/回款条件）
+│   ├── receivables.py      # crm__query_receivables（回款情况，只读）
+│   └── remark.py           # crm__update_contract_remark（写入类：跟单备注）
+├── adapters/               # CRM OpenAPI 客户端
+└── idempotency.py
+
+mcp_erp/                                # ERP（OpenAPI + RPA 补充，PRD 6.1）
+├── tools/
+│   ├── materials.py        # erp__search_materials（★ 物料模糊检索 Top-N：
+│   │                        #   编码/名称/规格/库存/协议价，歧义候选选择卡数据源；
+│   │                        #   分页游标，绝不全量返回上万物料）
+│   ├── batches.py          # erp__get_batches（孙表批次懒加载：按子表行 ID 拉取）
+│   └── sales_order.py      # erp__create_sales_order（复杂单据：主/子/孙三级
+│                            #   整单写入，单事务边界 + 整单幂等键，见 6.2）
+├── adapters/
+│   ├── openapi.py          # ERP OpenAPI 客户端（主通道）
+│   └── rpa_bridge.py       # RPA 补充通道（无 API 的老旧单据入口，PRD 8.2）
+└── idempotency.py          # 幂等记录含三级行数/金额快照，对账用
+
+mcp_wms/  # 入库/出库单查询、库存预警（OpenAPI，只读为主）
+```
+
+> **CRM 工具读写约束**（对应原型上架向导的评审规则）：`crm__query_*` 只读工具配合 Ask 模式可走快审通道；`crm__update_*` 写入工具必须走完整安全评审（见 4.7），且调用时强制 HITL 确认。
+
+> **ERP 物料歧义原则**（对应原型物料候选选择卡）：上万种物料中 Agent **只做检索与呈现，不猜测**——`erp__search_materials` 返回 Top-N 候选（编码/规格/库存/协议价），由用户必选其一；选定后协议价等默认值由服务端带出，Agent 不得代填。
+
 ### 4.3 renderer（桌面端渲染层，TS / React）
 
 ```
 apps/desktop/renderer/src/
 ├── chat/          # 会话流：消息渲染、思考折叠块、SSE 消费
-├── cards/         # 业务卡片渲染器（确认卡/成功卡/审批卡/BI卡）——来自 packages/ui
-├── skills/        # 我的技能、技能市场（Phase 2）
+├── cards/         # 业务卡片渲染器（来自 packages/ui，按 SSE 事件类型分发）
+│   ├── confirm/       # 确认卡（字段来源徽标：客户默认/追问/记忆恢复/自动计算）
+│   ├── material/      # 物料歧义候选选择卡（Top-N 必选不猜，ERP，Phase 2）
+│   ├── summary/       # 单据摘要卡（行数/金额/异常警示）+ diff 变更卡（旧值删除线→新值）
+│   ├── workbench/    # 全屏单据工作台（主表分组折叠 + 子表虚拟滚动
+│   │                  #   + 仅看异常行过滤 + 孙表批次懒加载钻取，Phase 2）
+│   ├── skillpub/      # 技能上架向导（信息→评审单→成功三视图，Phase 2）
+│   └── autowiz/       # 自动化新建向导（来源→配置→试运行→启用四视图，Phase 2）
+├── skills/        # 我的技能、技能市场（含「评审中」状态卡，Phase 2）
+├── automation/    # 自动化任务：任务列表/模板库/执行历史（Phase 2）
 ├── approval/      # 待办审批视图
 ├── knowledge/     # 知识库管理（Phase 2）
 └── lib/api/       # @chat-work/api-client 封装 + SSE 解析
@@ -264,10 +311,99 @@ apps/desktop/
 
 | 存储 | 用途 | 关键表/集合 |
 |------|------|------------|
-| PostgreSQL | 业务单据草稿、确认状态持久化、幂等记录、审计日志、技能/自动化元数据 | `confirmations`、`idempotency_records`、`audit_logs`、`skills`、`automation_tasks` |
-| Redis | L1 会话记忆（TTL 7d）、权限缓存（perm_ver 键）、JWT jti 黑名单、调度分布式锁 | — |
+| PostgreSQL | 业务单据草稿（含复杂单据三级结构）、确认状态持久化、幂等记录、审计日志、技能/自动化/评审元数据 | `doc_drafts`、`confirmations`、`idempotency_records`、`audit_logs`、`skills`、`skill_versions`、`skill_reviews`、`automation_tasks`、`automation_runs` |
+| Redis | L1 会话记忆（TTL 7d）、权限缓存（perm_ver 键）、JWT jti 黑名单、调度分布式锁、自动化并发信号量、会话车道队列（`session_lane:{sessionId}`） | — |
 | Milvus | L2/L3/L4 记忆向量 + 知识库向量（分 Collection 隔离） | `mem_personal_{org}`、`mem_dept_{dept}`、`kb_corp`、`kb_dept_{dept}` |
-| MinIO | 任务产物（周报/报表导出）、附件 | — |
+| MinIO | 任务产物（周报/报表导出/自动化执行产物）、附件 | — |
+
+### 4.7 技能市场上架与安全评审（Phase 2，PRD 3.4 / 3.5）
+
+**上架状态机（agent_core/skills/review.py）：**
+
+```
+draft（科室管理员低代码搭建：表单拖拽 + 工具编排）
+  → submitted（三步向导提交：基本信息/发布范围/执行模式
+  │            + 工具与数据范围声明，含只读/写入徽标）
+  → reviewing（信息科安全评审，生成评审单 SEC-RV-{date}-{seq}）
+  │     ├─ approved → published（市场上架，卡片+统计联动）
+  │     └─ rejected → draft（驳回原因留痕，整改后重提）
+published 升级版本 → 新版本走 lite 评审
+                  （diff 未引入新写入类工具时自动快审）
+```
+
+**评审规则引擎（对应原型动态评审规则）：**
+
+| 声明内容 | 评审通道 | SLA |
+|---------|---------|-----|
+| 含写入类工具（`annotations._meta.rw: write`） | 强制完整安全评审（写入范围/数据范围/Craft 模式额外审批） | ≤ 2 个工作日 |
+| 纯只读工具 + Ask 模式 | 快审通道（声明一致性抽查） | ≤ 4 小时 |
+
+**关键实现：**
+
+| 机制 | 实现 |
+|------|------|
+| 沙箱试运行 | 上架前必须跑通全部示例问法（每问法 ≥ 3 次）：只读真实数据 + 写入路由到测试环境（mcp server 的 `sandbox` profile，按 `_meta.rw` 自动切换写入目标） |
+| 工具声明快照 | 提交时固化 `skill_reviews.tool_decls`（工具 ID/读写/数据范围），评审与后续版本 diff 都以此为基线 |
+| 评审任务分发 | 信息科评审人的站内待办（复用审批待办视图），超 SLA 升级提醒 |
+| 市场统计联动 | 运行时埋点回写 `skills.stats`（调用量/成功率/确认卡修改率），驱动市场卡片展示与 16.4 灰度观测 |
+| 版本管理 | `skill_versions` 语义化版本；在用用户不自动升级，破坏性变更（表单字段变化）需用户二次确认 |
+
+### 4.8 自动化任务（Phase 2，PRD 3.6.2）
+
+**模块结构（agent_core/automation/）：**
+
+```
+├── scheduler.py    # APScheduler + Redis 分布式锁（多副本防重复触发）
+├── templates.py    # 模板库：预置场景（早报/周报/审批超时/库存预警/合同到期/月度简报），
+│                   #   一键套用预填（名称/调度/渠道/技能/模式）
+├── trial.py        # 试运行 HITL：首次执行结果推送创建者确认后才转 active
+├── runner.py       # 以创建者身份执行；硬性拒绝 Craft 模式；30 分钟超时终止
+└── pusher.py       # 结果推送：企微 bot / Chat-Work 会话 / 邮件
+```
+
+**任务状态机（对应原型四步向导 + PRD「先跑通再自动化」）：**
+
+```
+draft（来源三选：会话转换[推荐，参数自动带入] / 模板创建 / 空白）
+  → configured（调度规则 + 推送渠道；事件触发型无时间字段）
+  → trial_running（首次试运行）
+  → pending_confirm（结果推送创建者，HITL 确认）
+       ├─ confirmed → active（正式启用）
+       └─ rejected  → paused（调整配置后重试）
+运行态：active ⇄ paused（连续 3 次失败自动暂停并通知创建者）
+```
+
+**防护栏落地（PRD 3.6.2 执行约束 → 架构实现）：**
+
+| 约束 | 实现 |
+|------|------|
+| 单任务 ≥ 15 分钟间隔 | scheduler 注册时校验调度规则，拒绝高频配置 |
+| 30 分钟超时终止 | `runner` 用 `asyncio.timeout` 包裹执行，超时终止并推送失败通知 |
+| 单用户并发 ≤ 3 | Redis 信号量 `auto_run:{userId}`，超出排队（全系统按 Token 预算） |
+| 连续 3 次失败自动暂停 | `automation_runs` 失败连击计数 → 状态翻转 + 通知创建者；失败不自动重试（区别于幂等写入） |
+| 仅 Ask / Plan 模式 | `runner` 硬编码校验，无人值守禁止无人在场写入 |
+| 执行身份 = 创建者 | 任务携带创建者 JWT 上下文执行（权限随人走，perm_ver 变更即时收敛）；创建者离职 → 8.5.6 生命周期联动自动停用 |
+
+**执行历史：** `automation_runs`（run_id/task_id/产物 URI/耗时/Token 消耗/成败），产物落 MinIO；支持自然语言管理（"把早报改成 9 点发"→ 结构化更新调度规则，走 pipeline 同一抽参链路）。
+
+### 4.9 记忆离线固化与可迁移（Phase 2+，借鉴 OpenClaw Dreaming / MEMORY.md）
+
+**离线固化任务（agent_core/memory/consolidator.py，借鉴 OpenClaw「Dreaming」）：**
+
+| 环节 | 设计 |
+|------|------|
+| 触发 | 系统级定时任务（低峰期每日一次，如 02:00），复用 APScheduler 基础设施但独立于用户自动化任务（系统内部任务，无 owner） |
+| 输入 | 近 7 天已结束会话（L1 过期前快照）+ 当期 L2 已有记忆（防重复提炼） |
+| 提炼 | 小模型离线聚合：识别重复操作模式、常用参数、偏好与习惯 → 生成 L2 候选记忆条目（`source: auto_consolidated`） |
+| 敏感过滤 | **前置过滤**（写入前而非读取时）：工资/合同金额/联系方式等敏感字段直接丢弃（PRD 9.2 敏感隔离），与 Dreaming 的"敏感内容不写记忆产物"一致 |
+| 入池 | 仅对已同意 PIPL 知情同意的用户写入；产物进记忆面板「近期沉淀」列表，用户可查看/删除（可感知性），默认启用但可关闭 |
+| 衰减对齐 | 沿用 PRD 9.2 遗忘机制（90 天未引用降权、180 天归档），固化产物不豁免衰减 |
+
+**记忆可迁移（MEMORY.md 式文件化，对应 PRD 9.2「可感知性」）：**
+
+- **导出**：记忆面板一键导出 `memories_{userId}_{date}.md`——按「偏好 / 常用参数 / 操作习惯」分节的 Markdown，每条含来源（`default`/`ask`/`auto_consolidated`）与时间戳，用户可读可编辑（对齐 OpenClaw 记忆文件化理念：行为可检查、可版本化）
+- **导入**：本地编辑后导回走同一校验链（敏感字段过滤 + 格式校验），条目标记 `source: imported`
+- **边界**：导出文件属个人数据，不进知识库、不跨科室共享（PRD 9.2 默认隐私）；离职清除逻辑不受导出影响
 
 ---
 
@@ -285,7 +421,9 @@ apps/desktop/
 
 ---
 
-## 6. 关键数据流：销售订单录入（端到端）
+## 6. 关键数据流
+
+### 6.1 销售订单录入（OA，MVP，端到端）
 
 ```
 用户          agent-core                mcp-oa            OA系统
@@ -310,6 +448,50 @@ apps/desktop/
 
 异常分支：⑤ 超时 → 同幂等键调 `oa__get_idempotency_result` → 有结果返回单号 / 无记录查当日同参单据 → 均未知则提示用户勿重复提交（PRD 8.7 流程）。
 
+### 6.2 ERP 复杂单据录入（Phase 2：主表上百字段 + 子表 + 孙表批次）
+
+```
+用户                agent-core                     mcp-erp           ERP系统
+ │ "录ERP销售订单，华东仓…" │                           │                  │
+ │──HTTPS POST /chat───▶│                           │                  │
+ │                      │ ① 技能路由（erp_sales_order） │                  │
+ │                      │ ② erp__search_materials(Top-N)                  │
+ │                      │────MCP call──────────────▶│──模糊检索(游标)──▶│
+ │                      │◀─候选[编码/规格/库存/协议价]─│◀────────────────│
+ │◀─SSE: 物料候选选择卡（Top-N，必选不猜）              │                  │
+ │ [选用 SP-1024]       │                           │                  │
+ │──POST 材料选定──────▶│ ③ 服务端带出协议价/默认值（Agent 不代填）          │
+ │                      │ ④ 分步抽参：LLM 只抽对话提及字段，               │
+ │                      │    未提及分组折叠标记"待补"（Token 预算控制）     │
+ │◀─SSE: 单据摘要卡（组数/金额/异常行数）              │                  │
+ │◀─SSE: 工作台卡片（可展开全屏）                      │                  │
+ │ [全屏工作台：分组折叠│子表滚动|仅看异常行过滤]        │                  │
+ │ [钻取子表行]          │──erp__get_batches(行ID)──▶│──批次查询───────▶│
+ │                      │  [孙表懒加载：按行 REST 拉取，不进对话流]         │
+ │ [修改字段"税率改13%"] │                           │                  │
+ │◀─SSE: diff 卡（旧值删除线→新值，金额联动重算）        │                  │
+ │ [提交（大额触发分级审批提示）]                        │                  │
+ │─POST /confirmations/tok─▶ ⑤ 整单幂等键生成           │                  │
+ │                      │ ⑥ erp__create_sales_order(主+子+孙 三级整单)    │
+ │                      │    单事务边界：主表→子表→孙表逐级写入，          │
+ │                      │    任一级失败整单回滚 + 异常留痕                  │
+ │                      │────MCP call──────────────▶│──三级写入(事务)──▶│
+ │                      │◀─单据号 ERP-SO-xxx + 行数/金额快照─│◀───────────│
+ │◀─SSE: 成功卡（单号/三级写入流水线/分级审批流）        │                  │
+```
+
+**关键设计（与 6.1 的差异）：**
+
+| 维度 | OA 简单单据（6.1） | ERP 复杂单据（本节） |
+|------|------------------|-------------------|
+| 参数提取 | 单轮 LLM 抽全字段 | **分步抽参**：Schema 按分组裁剪进上下文，只处理提及字段 |
+| 物料 | 客户/商品候选（枚举对齐） | **上万物料 Top-N 检索 + 用户必选**，选定后服务端带出协议价 |
+| 草稿结构 | 平面字段 | 三级嵌套（header 分组 + lines + batches 懒加载），存 `doc_drafts` |
+| 确认交互 | 确认卡 | 摘要卡 + **全屏工作台**（分组折叠/仅看异常行/孙表钻取）+ diff 卡 |
+| 幂等粒度 | 单据级 | **整单级**（主+子+孙共用一个幂等键，幂等记录含行数/金额快照供对账） |
+| 写入 | 单次调用 | **单事务边界三级写入**，任一级失败整单回滚、异常留痕（PRD 8.7 扩展） |
+| 审批 | OA 审批流 | 金额超阈值 → ERP 侧分级审批流（大额单独提示） |
+
 ---
 
 ## 7. 共享契约设计（protocol 包，双语言之源）
@@ -320,8 +502,13 @@ packages/protocol/
 │   ├── oa__create_sales_order.json   # MCP inputSchema + annotations(_meta: hitl/idempotency/requiredPermissions)
 │   ├── oa__query_customers.json
 │   ├── bi__execute_query.json
+│   ├── erp__search_materials.json    # Phase 2：Top-N 候选，_meta.rw: read（候选卡数据源）
+│   ├── erp__create_sales_order.json  # Phase 2：三级整单结构，_meta.idempotencyRequired: true（整单粒度）
+│   ├── erp__get_batches.json         # Phase 2：孙表懒加载
+│   ├── crm__update_contract_remark.json  # Phase 2：_meta.rw: write（走完整评审 + HITL）
 │   └── local__write_file.json
-├── events/                           # SSE 事件类型定义（stage_progress/draft_card/confirm_card/final）
+├── events/                           # SSE 事件类型定义（stage_progress/draft_card/confirm_card/
+│                                    #   diff_card/material_candidates/doc_workbench/final）
 └── package.json                      # TS 类型生成（json-schema-to-typescript）
 ```
 
@@ -342,6 +529,7 @@ services:
   keycloak:      # + PostgreSQL（keycloak 专用 schema）
   agent-core:    # 2 副本（uvicorn worker=2）
   mcp-oa:  mcp-bi:
+  mcp-crm: mcp-erp: mcp-wms:   # Phase 2 接入时加入（PRD 6.1 首批）
   postgres: redis: milvus:  minio:
   vllm:          # A10×2，OpenAI 兼容 :8000
   update-server: # 桌面端 electron-updater feed（MVP 起）
@@ -406,11 +594,13 @@ services:
 | PRD 章节 | 架构落点 |
 |---------|---------|
 | 3.2 技能体系 | agent_core/skills（Registry + LangGraph SubGraph） |
-| 3.6 自动化 | agent_core/automation（APScheduler + 推送，Phase 2） |
-| 4.1 Agent Core 流水线 | agent_core/pipeline（LangGraph StateGraph） |
+| 3.4 / 3.5 技能市场上架与生命周期 | agent_core/skills（market.py + review.py：上架状态机/沙箱试运行/评审 SLA），见 4.7 |
+| 3.6.2 自动化任务 | agent_core/automation（scheduler/templates/trial/runner/pusher），见 4.8 |
+| 4.1 Agent Core 流水线 | agent_core/pipeline（LangGraph StateGraph；复杂单据见 4.1 扩展 + 6.2） |
+| 6.1 Phase 2 系统对接（CRM/ERP/WMS） | mcp_crm / mcp_erp / mcp_wms（见 4.2 Phase 2 首批） |
 | 8.3 MCP 规范 | services/mcp_* + packages/protocol |
 | 8.5 SSO | Keycloak + APISIX jwt 插件 + desktop/main/auth.ts（Loopback） |
-| 8.7 幂等 | mcp-* 的 idempotency 模块（PG 表）+ agent_core/guardrail |
-| 9 记忆/知识库 | agent_core/memory + knowledge + Milvus/Redis |
+| 8.7 幂等 | mcp-* 的 idempotency 模块（PG 表）+ agent_core/guardrail；ERP 整单粒度扩展见 6.2 |
+| 9 记忆/知识库 | agent_core/memory + knowledge + Milvus/Redis（离线固化与可迁移见 4.9） |
 | 5.5 桌面端 | apps/desktop + local-mcp（TS/stdio） |
 | 16 评估 | evals/ 目录 + CI 回归门禁 |

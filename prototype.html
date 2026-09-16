@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat-Work Agent · 交互原型 v1.6</title>
+<title>Chat-Work Agent · 交互原型 v1.7</title>
 <style>
 :root{
   --bg:#f2f4f8;
@@ -195,6 +195,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .t-ask{background:var(--amber-soft);color:var(--amber)}
 .t-calc{background:var(--primary-soft);color:var(--primary)}
 .t-sys{background:var(--line-soft);color:var(--muted)}
+.t-mem{background:#f3efff;color:#7c3aed}
 .amount-row{background:linear-gradient(90deg,#f8f8ff,#f2f4fe);border-radius:10px;padding:10px 12px;border-bottom:none;margin:2px 0}
 .amount-row .f-value{font-size:15px}
 
@@ -351,6 +352,395 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
 .toast.out{animation:toastOut .25s ease both}
 @keyframes toastOut{to{opacity:0;transform:translateX(30px)}}
+
+/* ============ 登录页 ============ */
+.login-view{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e9ecfd 0%,#f2f4f8 45%,#e7f6f0 100%);z-index:50;overflow:auto}
+.login-panel{width:920px;max-width:calc(100vw - 48px);display:flex;border-radius:22px;overflow:hidden;box-shadow:var(--shadow-pop);animation:loginIn .5s cubic-bezier(.22,1,.36,1) both}
+@keyframes loginIn{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+.login-brand{flex:1.15;background:linear-gradient(150deg,#6f66f5 0%,#4f46e5 45%,#312e81 100%);color:#fff;padding:46px 44px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.login-brand::after{content:"";position:absolute;right:-90px;bottom:-90px;width:280px;height:280px;border-radius:50%;background:rgba(255,255,255,.08)}
+.login-brand::before{content:"";position:absolute;right:30px;bottom:-40px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.06)}
+.lb-logo{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.lb-logo svg{width:24px;height:24px;color:#fff}
+.lb-name{font-size:22px;font-weight:800;margin-top:18px;letter-spacing:.3px}
+.lb-name em{font-style:normal;color:#c7d2fe}
+.lb-slogan{font-size:13px;color:rgba(255,255,255,.78);margin-top:6px}
+.lb-feats{margin-top:30px;display:flex;flex-direction:column;gap:16px;position:relative;z-index:1}
+.lb-feat{display:flex;gap:12px;align-items:flex-start}
+.lb-feat svg{width:18px;height:18px;color:#c7d2fe;flex-shrink:0;margin-top:2px}
+.lb-feat b{font-size:13.5px;display:block}
+.lb-feat span{font-size:12px;color:rgba(255,255,255,.65);display:block;margin-top:3px;line-height:1.6}
+.lb-foot{margin-top:auto;font-size:11px;color:rgba(255,255,255,.5);padding-top:26px;position:relative;z-index:1}
+.login-form{width:400px;background:#fff;padding:44px 40px;display:flex;flex-direction:column}
+.lf-title{font-size:20px;font-weight:800}
+.lf-sub{font-size:12.5px;color:var(--muted);margin-top:6px}
+.sso-btn{margin-top:14px;display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:13px;padding:12px 14px;background:#fff;transition:.15s;text-align:left}
+.sso-btn:hover{border-color:var(--primary);background:var(--primary-soft);transform:translateY(-1px)}
+.sso-btn:disabled{opacity:.7;cursor:default;transform:none}
+.sso-ico{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sso-ico svg{width:18px;height:18px}
+.sso-ad{background:var(--primary-soft);color:var(--primary)}
+.sso-wecom{background:var(--green-soft);color:var(--green)}
+.sso-ding{background:var(--blue-soft,#e8f1fd);color:var(--blue,#1d6fd1)}
+.sso-meta{flex:1;min-width:0}
+.sso-meta b{font-size:13.5px;display:block}
+.sso-meta span{font-size:11px;color:var(--faint);display:block;margin-top:2px}
+.sso-btn.loading{pointer-events:none}
+.sso-btn.loading .sso-ico{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lf-tip{display:flex;gap:8px;align-items:flex-start;margin-top:22px;font-size:11.5px;color:var(--muted);line-height:1.65;background:var(--line-soft);border-radius:10px;padding:10px 12px}
+.lf-tip svg{width:14px;height:14px;flex-shrink:0;margin-top:2px;color:var(--primary)}
+.lf-sec{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:11px;color:var(--faint);line-height:1.65}
+.lf-sec svg{width:13px;height:13px;flex-shrink:0;margin-top:2px;color:var(--green)}
+
+/* ============ 通用页面视图 ============ */
+.page-view{flex:1;display:none;flex-direction:column;overflow:hidden;min-width:0}
+.page-view.active{display:flex}
+.pv-scroll{flex:1;overflow-y:auto;padding:26px 28px 40px}
+.pv-inner{max-width:1100px;margin:0 auto}
+.pv-head{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.pv-ico{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pv-ico svg{width:22px;height:22px}
+.pv-title b{font-size:19px;display:block;letter-spacing:.2px}
+.pv-title span{font-size:12px;color:var(--muted);display:block;margin-top:3px}
+.pv-actions{margin-left:auto;display:flex;gap:10px;align-items:center;flex-shrink:0}
+.pv-search{position:relative;width:230px}
+.pv-search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--faint)}
+.pv-search input{width:100%;height:37px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 12px 0 32px;font-size:12.5px;color:var(--text);outline:none;transition:.2s}
+.pv-search input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+
+/* 统计条 */
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.stat-card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px 16px;box-shadow:var(--shadow-card)}
+.stat-card .s-v{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.stat-card .s-l{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+/* Tabs */
+.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.tab{height:32px;padding:0 16px;border-radius:9px;font-size:12.5px;color:var(--muted);border:1px solid var(--line);background:#fff;font-weight:500;transition:.15s}
+.tab:hover{border-color:var(--faint);color:var(--text)}
+.tab.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600}
+
+/* 开关 */
+.switch{width:38px;height:21px;border-radius:999px;background:#c9ced9;position:relative;transition:.2s;flex-shrink:0;cursor:pointer}
+.switch::after{content:"";position:absolute;left:3px;top:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch.on{background:var(--green)}
+.switch.on::after{left:20px}
+.switch.lock{opacity:.7;cursor:not-allowed}
+.switch.lock::after{right:3px;left:auto}
+
+/* 通用提示条 */
+.pv-note{display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding:10px 13px;background:var(--line-soft);border-radius:10px;font-size:11.5px;color:var(--muted);line-height:1.65}
+.pv-note svg{width:14px;height:14px;flex-shrink:0;margin-top:2px;color:var(--green)}
+
+/* ============ 技能市场 ============ */
+.skill-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.skill-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow-card);display:flex;flex-direction:column;gap:10px;transition:.18s;animation:fadeUp .35s ease both}
+.skill-card:hover{transform:translateY(-2px);box-shadow:0 4px 8px rgba(28,35,51,.04),0 16px 32px -12px rgba(28,35,51,.18)}
+.sk-top{display:flex;align-items:center;gap:10px}
+.sk-ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sk-ico svg{width:18px;height:18px}
+.ci-skill-blue{background:var(--primary-soft);color:var(--primary)}
+.ci-skill-green{background:var(--green-soft);color:var(--green)}
+.ci-skill-amber{background:var(--amber-soft);color:var(--amber)}
+.ci-skill-gray{background:var(--line-soft);color:var(--muted)}
+.ci-skill-red{background:var(--red-soft);color:var(--red)}
+.sk-meta{flex:1;min-width:0}
+.sk-meta b{font-size:13.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-meta span{font-size:11px;color:var(--faint);display:block;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sk-desc{font-size:12px;color:var(--muted);line-height:1.65;min-height:40px}
+.sk-chips{display:flex;gap:5px;flex-wrap:wrap}
+.sk-chip{font-size:10.5px;background:var(--line-soft);color:var(--muted);border-radius:6px;padding:2px 8px}
+.sk-foot{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:10px;border-top:1px dashed var(--line-soft)}
+.sk-stat{flex:1;font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.sk-stat .star{width:12px;height:12px;color:#f59e0b}
+.mini-btn.installed{background:var(--green-soft);border-color:transparent;color:var(--green)}
+.mini-btn.disabled{opacity:.55;cursor:not-allowed}
+.mini-btn.noperm{color:var(--red)}
+
+/* ============ 知识库 ============ */
+.doc-row{display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line-soft);transition:.13s}
+.doc-row:hover{background:#fbfcfe}
+.doc-row:last-child{border-bottom:none}
+.doc-ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.doc-ico svg{width:17px;height:17px}
+.doc-main{flex:1;min-width:0}
+.doc-main b{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-main .d-sub{font-size:11px;color:var(--faint);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.d-badges{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.d-badge{font-size:10.5px;font-weight:600;border-radius:6px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.d-tag{background:var(--line-soft);color:var(--muted)}
+.d-d1{background:var(--green-soft);color:var(--green)}
+.d-d2{background:var(--primary-soft);color:var(--primary)}
+.d-d3{background:var(--amber-soft);color:var(--amber)}
+.d-ok{background:var(--green-soft);color:var(--green)}
+.d-review{background:var(--amber-soft);color:var(--amber)}
+.d-stale{background:var(--red-soft);color:var(--red)}
+.doc-ref{width:90px;flex-shrink:0;text-align:right;font-size:11.5px;color:var(--muted)}
+.doc-ref b{display:block;font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+.gap-card{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-card);overflow:hidden}
+.gap-head{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line-soft);font-size:13.5px;font-weight:700}
+.gap-head svg{width:16px;height:16px;color:var(--amber)}
+.gap-body{padding:12px 18px;display:flex;flex-direction:column;gap:9px}
+.gap-item{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)}
+.gap-q{background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 12px;flex:1;font-size:12px;color:var(--text)}
+.gap-n{font-size:11px;color:var(--amber);font-weight:700;flex-shrink:0}
+
+/* ============ 自动化 ============ */
+.guard-bar{display:flex;align-items:flex-start;gap:9px;margin-bottom:16px;background:linear-gradient(135deg,#fdf3e3,#fdf8ee);border:1px solid #f3dfb2;border-radius:12px;padding:11px 14px;font-size:12px;color:#8a4f08;line-height:1.65}
+.guard-bar svg{width:15px;height:15px;flex-shrink:0;margin-top:2px}
+.auto-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-card);padding:16px 18px;margin-bottom:14px;animation:fadeUp .35s ease both}
+.auto-top{display:flex;align-items:flex-start;gap:12px}
+.auto-ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.auto-ico svg{width:18px;height:18px}
+.auto-main{flex:1;min-width:0}
+.auto-main b{font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.auto-main .a-sub{font-size:11.5px;color:var(--muted);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap}
+.auto-main .a-sub .hlk{color:var(--primary);font-weight:600}
+.auto-next{margin-top:10px;display:flex;align-items:center;gap:14px;background:#fbfcfe;border:1px solid var(--line-soft);border-radius:11px;padding:10px 14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.auto-next b{color:var(--text)}
+.auto-state{margin-left:auto;display:flex;align-items:center;gap:10px}
+.state-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;border-radius:7px;padding:3px 10px}
+.st-run{background:var(--green-soft);color:var(--green)}
+.st-pause{background:var(--red-soft);color:var(--red)}
+.auto-result{margin-top:10px;font-size:12px;color:var(--muted);background:var(--line-soft);border-radius:9px;padding:8px 12px;line-height:1.65}
+.auto-result b{color:var(--text)}
+.hist-card{margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-card);overflow:hidden}
+.hist-head{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line-soft);font-size:13.5px;font-weight:700}
+.hist-head svg{width:16px;height:16px;color:var(--primary)}
+.hist-row{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px dashed var(--line-soft);font-size:12px;color:var(--muted)}
+.hist-row:last-child{border-bottom:none}
+.hist-time{width:120px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.hist-name{flex:1;color:var(--text);font-weight:500}
+.hist-meta{display:flex;gap:12px;align-items:center;flex-shrink:0}
+
+/* ============ 我的记忆 ============ */
+.mem-layers{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.ml-card{border:1px solid var(--line);border-radius:13px;padding:14px 16px;background:#fbfcfe;font-size:12.5px}
+.ml-card b{font-size:13px;display:flex;align-items:center;gap:7px}
+.ml-card b .lvl{font-size:10px;background:var(--line-soft);border-radius:5px;padding:2px 6px;color:var(--muted)}
+.ml-card span{font-size:11.5px;color:var(--faint);display:block;margin-top:5px;line-height:1.6}
+.ml-card.cur{border-color:rgba(79,70,229,.35);background:linear-gradient(135deg,#f4f4ff,#eef0fe);box-shadow:0 8px 20px -12px rgba(79,70,229,.35)}
+.ml-card.cur b .lvl{background:var(--primary);color:#fff}
+.consent-card{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 18px;margin-bottom:16px;box-shadow:var(--shadow-card)}
+.consent-card>svg{width:20px;height:20px;color:var(--green);flex-shrink:0}
+.cc-main{flex:1}
+.cc-main b{font-size:13.5px;display:block}
+.cc-main span{font-size:12px;color:var(--muted);display:block;margin-top:3px;line-height:1.65}
+.mem-row{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line-soft)}
+.mem-row:last-child{border-bottom:none}
+.mem-type{font-size:10.5px;font-weight:600;border-radius:6px;padding:3px 8px;flex-shrink:0;white-space:nowrap}
+.mt-pref{background:var(--primary-soft);color:var(--primary)}
+.mt-param{background:var(--green-soft);color:var(--green)}
+.mt-habit{background:var(--amber-soft);color:var(--amber)}
+.mem-content{flex:1;font-size:13px;min-width:0}
+.mem-content .m-sub{font-size:11px;color:var(--faint);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.danger-zone{margin-top:20px;border:1px solid #f5c6c6;border-radius:13px;background:#fffafa;overflow:hidden}
+.dz-head{padding:11px 18px;background:var(--red-soft);font-size:12.5px;font-weight:700;color:var(--red);display:flex;align-items:center;gap:8px}
+.dz-head svg{width:15px;height:15px}
+.dz-row{display:flex;align-items:center;gap:12px;padding:12px 18px;font-size:12.5px;color:var(--muted)}
+.dz-row span{flex:1}
+
+/* ============ 设置 ============ */
+.set-grid{display:grid;grid-template-columns:190px 1fr;gap:18px;align-items:start}
+.set-nav{position:sticky;top:0;display:flex;flex-direction:column;gap:4px}
+.sn-item{display:flex;align-items:center;gap:10px;height:38px;border-radius:10px;padding:0 13px;font-size:13px;color:var(--muted);cursor:pointer;transition:.13s;border:1px solid transparent}
+.sn-item svg{width:15px;height:15px}
+.sn-item:hover{background:#fff;color:var(--text)}
+.sn-item.active{background:var(--primary-soft);color:var(--primary);font-weight:600;border-color:rgba(79,70,229,.15)}
+.set-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-card);overflow:hidden;margin-bottom:16px;scroll-margin-top:10px}
+.set-card-head{display:flex;align-items:center;gap:9px;padding:13px 18px;border-bottom:1px solid var(--line-soft);font-size:13.5px;font-weight:700;background:linear-gradient(180deg,#fbfcfe,#fff)}
+.set-card-head svg{width:16px;height:16px;color:var(--primary)}
+.set-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px dashed var(--line-soft);font-size:13px}
+.set-row:last-child{border-bottom:none}
+.sr-label{width:170px;flex-shrink:0;color:var(--muted);font-size:12.5px}
+.sr-main{flex:1;min-width:0;line-height:1.6}
+.sr-main b{font-size:13px}
+.sr-main .sr-sub{font-size:11px;color:var(--faint);display:block;margin-top:2px}
+.sr-ctrl{flex-shrink:0;display:flex;align-items:center;gap:8px}
+.profile-hero{display:flex;align-items:center;gap:16px;padding:18px;background:linear-gradient(135deg,#f6f7fd,#eef4ff);border-bottom:1px solid var(--line-soft)}
+.profile-hero .avatar{width:54px;height:54px;font-size:20px}
+.ph-main b{font-size:16px}
+.ph-main .p-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.sys-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:7px;padding:3px 10px;margin-right:6px;margin-top:4px}
+.sb-rw{background:var(--green-soft);color:var(--green)}
+.sb-ro{background:var(--primary-soft);color:var(--primary)}
+.sb-push{background:var(--amber-soft);color:var(--amber)}
+.radio-chips{display:flex;gap:8px}
+.radio-chip{height:32px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:12px;color:var(--muted);font-weight:500}
+.radio-chip.active{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);font-weight:600}
+
+/* ============ ERP 复杂单据（主表·子表·孙表） ============ */
+.mat-list{border:1px solid var(--line-soft);border-radius:11px;overflow:hidden;margin-top:10px}
+.mat-hd,.mat-row{display:grid;grid-template-columns:1.45fr .95fr .5fr .55fr .62fr auto;gap:8px;align-items:center;padding:9px 13px}
+.mat-hd{background:#f8f9fe;font-size:10.5px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--line-soft)}
+.mat-row{border-bottom:1px solid var(--line-soft);font-size:12.5px;transition:.12s}
+.mat-row:last-child{border-bottom:none}
+.mat-row:hover{background:#f8f9fe}
+.mat-row.picked{background:var(--primary-soft)}
+.mat-row.picked .mini-btn{background:var(--primary);border-color:var(--primary);color:#fff}
+.mat-name b{font-size:12.5px;display:block}
+.mat-name span{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--faint)}
+.mat-spec{font-size:11.5px;color:var(--muted)}
+.mat-stock b{font-weight:700;font-variant-numeric:tabular-nums}
+.mat-hint{font-size:11px;color:var(--faint);margin-top:8px;display:flex;align-items:flex-start;gap:6px;line-height:1.5}
+.mat-hint svg{width:13px;height:13px;flex-shrink:0;margin-top:1px}
+.sum-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.sum-cell{background:#f8f9fe;border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px}
+.sum-cell b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+.sum-cell span{font-size:11px;color:var(--faint)}
+.sum-warns{margin-top:10px;border:1px solid #f3dfb2;background:var(--amber-soft);border-radius:10px;overflow:hidden}
+.sw-row{display:flex;gap:9px;align-items:flex-start;padding:9px 12px;font-size:12px;color:#8a4f08;line-height:1.55}
+.sw-row+.sw-row{border-top:1px dashed #e8d5a8}
+.sw-row svg{width:14px;height:14px;flex-shrink:0;margin-top:2px}
+.sw-row b{font-weight:700}
+.diff-box{border:1px solid var(--line-soft);border-radius:11px;margin-top:10px;overflow:hidden}
+.diff-row{display:flex;gap:9px;align-items:baseline;padding:10px 13px;border-bottom:1px solid var(--line-soft);font-size:12.5px;flex-wrap:wrap;line-height:1.7}
+.diff-row:last-child{border-bottom:none}
+.diff-row .dk{width:150px;flex-shrink:0;color:var(--muted);font-size:12px}
+.d-old{color:var(--red);text-decoration:line-through;background:var(--red-soft);border-radius:5px;padding:1px 7px;font-size:12px;font-variant-numeric:tabular-nums}
+.d-arrow{color:var(--faint);font-size:11px}
+.d-new{color:var(--green);background:var(--green-soft);border-radius:5px;padding:1px 7px;font-weight:700;font-variant-numeric:tabular-nums}
+.d-note{color:var(--faint);font-size:11.5px}
+/* 单据工作台（全屏弹层） */
+.wb-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:900;padding:22px}
+.wb-mask.show{display:flex;animation:fadeUp .22s ease both}
+.doc-wb{width:min(1140px,96vw);max-height:92vh;display:flex;flex-direction:column;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(2,6,23,.35);overflow:hidden}
+.wb-head{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid var(--line-soft);background:linear-gradient(180deg,#fbfcfe,#fff)}
+.wb-head .c-ico{width:36px;height:36px}
+.wb-head-main b{font-size:14.5px;display:block}
+.wb-head-main span{font-size:11.5px;color:var(--faint)}
+.wb-body{overflow:auto;padding:16px 20px;flex:1}
+.wb-sec-head{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--muted);margin:4px 0 9px}
+.wb-sec-head svg{width:14px;height:14px;color:var(--primary)}
+.wb-sec-head .wb-count{font-weight:500;color:var(--faint);font-size:11px}
+.wb-groups{display:grid;grid-template-columns:repeat(2,1fr);gap:0 28px}
+.wb-group{border:1px solid var(--line-soft);border-radius:11px;overflow:hidden}
+.wb-group h5{font-size:11.5px;padding:8px 13px;background:#f8f9fe;border-bottom:1px solid var(--line-soft);color:var(--muted);display:flex;align-items:center;gap:6px;font-weight:700}
+.wb-group h5 svg{width:12px;height:12px;color:var(--primary)}
+.sub-table{border:1px solid var(--line-soft);border-radius:11px;overflow:hidden;font-size:12px;margin-top:2px}
+.sub-hd{display:grid;grid-template-columns:36px 2.1fr .62fr .58fr .82fr .78fr .52fr;background:#f8f9fe;font-size:10.5px;font-weight:700;color:var(--muted)}
+.sub-hd>div{padding:8px 10px;border-bottom:1px solid var(--line-soft)}
+.sub-tr{display:grid;grid-template-columns:36px 2.1fr .62fr .58fr .82fr .78fr .52fr;align-items:center;cursor:pointer;transition:.12s}
+.sub-tr>div{padding:9px 10px;border-bottom:1px solid var(--line-soft);min-width:0}
+.sub-tr:hover{background:#f8f9fe}
+.sub-tr.err{background:#fffaf0}
+.sub-tr.err:hover{background:#fdf3df}
+.sub-tr.open{background:#f4f5fd}
+.sub-code{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--faint)}
+.sub-name b{font-size:12.5px;display:block}
+.sub-name span{font-size:10.5px;color:var(--faint)}
+.sub-qty b{font-weight:700;font-variant-numeric:tabular-nums}
+.sub-qty span,.sub-price span{font-size:10.5px;color:var(--faint)}
+.sub-amt .money{font-weight:700;font-variant-numeric:tabular-nums}
+.sub-amt .warn-price{display:block;font-size:10.5px;color:var(--amber);font-weight:600}
+.sub-tr.err .sub-date{color:var(--amber);font-weight:700}
+.grand{display:none;grid-column:1/-1;background:#fbfcfe;border-top:1px dashed var(--line);padding:11px 14px}
+.sub-tr.open .grand{display:block}
+.grand-title{font-size:11px;font-weight:700;color:var(--primary);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.grand-title svg{width:12px;height:12px}
+.grand-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.g-cell{background:#fff;border:1px solid var(--line-soft);border-radius:8px;padding:7px 10px;font-size:11px;color:var(--faint);line-height:1.5}
+.g-cell b{display:block;font-size:11.5px;color:var(--text);font-variant-numeric:tabular-nums}
+.wb-foot{display:flex;align-items:center;gap:14px;padding:12px 20px;border-top:1px solid var(--line-soft);background:#fbfcfe;font-size:12.5px;flex-wrap:wrap}
+.wb-foot .ft-total{font-size:12px;color:var(--muted)}
+.wb-foot .ft-total .money{font-size:16px}
+.wb-foot .wb-virnote{font-size:11px;color:var(--faint);display:flex;align-items:center;gap:6px;margin-left:auto}
+.wb-foot .wb-virnote svg{width:13px;height:13px}
+.doc-wb.err-only .sub-tr:not(.err){display:none}
+.doc-wb.err-only .sub-hd{background:var(--amber-soft)}
+
+/* ---------- 技能市场 · 上架向导 ---------- */
+.pub-wb{width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(2,6,23,.35);overflow:hidden}
+.pub-wb .spacer{flex:1}
+.pub-flowwrap{padding:14px 20px 0;border-bottom:1px solid var(--line-soft)}
+.pub-flow{display:flex;align-items:flex-start}
+.pf-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative}
+.pf-step .p-dot{width:34px;height:34px;border-radius:50%;background:#fff;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--faint);z-index:1;transition:.2s}
+.pf-step .p-dot svg{width:14px;height:14px}
+.pf-step span{font-size:11.5px;color:var(--muted)}
+.pf-step:not(:first-child)::before{content:'';position:absolute;top:17px;right:50%;width:100%;height:2px;background:var(--line-soft)}
+.pf-step.done .p-dot{background:var(--green);border-color:var(--green);color:#fff}
+.pf-step.done span{color:var(--green);font-weight:600}
+.pf-step.done:not(:first-child)::before{background:var(--green)}
+.pf-step.cur .p-dot{border-color:var(--primary);color:var(--primary);box-shadow:0 0 0 4px rgba(79,70,229,.14)}
+.pf-step.cur span{color:var(--primary);font-weight:600}
+.pub-sec{font-size:12px;font-weight:700;color:var(--muted);margin:2px 0 8px;display:flex;align-items:center;gap:6px}
+.pub-sec svg{width:13px;height:13px;color:var(--primary)}
+.pub-sec .sub{font-weight:400;color:var(--faint);font-size:11px}
+.pub-field .pf-label{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:3px}
+.pf-label .req{color:var(--red);margin-left:2px}
+.pf-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
+.pub-field{margin-bottom:12px}
+.pf-input{width:100%;height:37px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:13px;color:var(--text);outline:none;transition:.15s;font-family:inherit}
+.pf-area{width:100%;min-height:56px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:12.5px;color:var(--text);outline:none;transition:.15s;resize:vertical;font-family:inherit;line-height:1.55}
+.pf-input:focus,.pf-area:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.tool-row{display:grid;grid-template-columns:18px 1fr auto auto;gap:11px;align-items:center;border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;margin-bottom:7px;cursor:pointer;transition:.15s;background:#fff}
+.tool-row:hover{border-color:var(--primary);background:#fbfbff}
+.tool-row.on{border-color:var(--primary);background:var(--primary-soft)}
+.tool-check{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;color:#fff;transition:.13s}
+.tool-row.on .tool-check{background:var(--primary);border-color:var(--primary)}
+.tool-check svg{width:11px;height:11px;opacity:0;transition:.13s}
+.tool-row.on .tool-check svg{opacity:1}
+.tool-name{font-size:12.5px;font-weight:600}
+.tool-name span{display:block;font-size:11px;color:var(--faint);font-weight:400;margin-top:1px}
+.tool-scope{font-size:10.5px;color:var(--muted);background:var(--line-soft);border-radius:6px;padding:2px 8px;white-space:nowrap}
+.tool-rw{font-size:10.5px;border-radius:6px;padding:2px 8px;font-weight:600}
+.tool-rw.r{background:var(--green-soft);color:var(--green)}
+.tool-rw.w{background:var(--red-soft);color:var(--red)}
+.pub-warn{display:flex;gap:9px;align-items:flex-start;background:var(--amber-soft);border:1px solid #f3dfb2;border-radius:10px;padding:10px 13px;font-size:11.5px;color:#a05a0a;line-height:1.6;margin-top:10px}
+.pub-warn svg{width:14px;height:14px;flex-shrink:0;margin-top:2px}
+.chip-add{border:1px dashed var(--line);background:#fff;cursor:pointer;color:var(--faint);transition:.15s;font-family:inherit}
+.chip-add:hover{border-color:var(--primary);color:var(--primary)}
+.review-box{border:1px solid var(--line-soft);border-radius:11px;overflow:hidden;margin-bottom:12px}
+.review-row{display:flex;justify-content:space-between;gap:14px;padding:10px 14px;border-bottom:1px solid var(--line-soft);font-size:12.5px;align-items:baseline}
+.review-row:last-child{border-bottom:none;background:#fbfcfe}
+.review-row .rk{color:var(--muted);flex-shrink:0}
+.review-row .rv{text-align:right;line-height:1.55}
+.pub-done{display:flex;flex-direction:column;align-items:center;padding:26px 20px 6px;text-align:center}
+.pub-done .pd-ico{width:56px;height:56px;border-radius:50%;background:var(--green-soft);color:var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:13px;animation:popIn .3s ease both}
+.pub-done .pd-ico svg{width:26px;height:26px}
+.pub-done h4{font-size:16px;margin-bottom:7px}
+.pub-done p{font-size:12.5px;color:var(--muted);line-height:1.65;max-width:430px}
+@keyframes popIn{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+
+/* ---------- 自动化 · 模板库 / 新建向导 ---------- */
+.tpl-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.tpl-card{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:9px;background:#fff;transition:.15s}
+.tpl-card:hover{border-color:var(--primary);box-shadow:0 6px 18px -10px rgba(79,70,229,.35)}
+.tpl-top{display:flex;gap:10px;align-items:flex-start}
+.tpl-ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tpl-ico svg{width:16px;height:16px}
+.tpl-meta{flex:1;min-width:0}
+.tpl-meta b{font-size:13px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.tpl-meta b .tused{font-size:10px;font-weight:600;background:var(--green-soft);color:var(--green);border-radius:5px;padding:1px 6px}
+.tpl-meta span{font-size:11.5px;color:var(--muted);display:block;margin-top:3px;line-height:1.55}
+.tpl-tags{display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px;color:var(--muted)}
+.tpl-tags span{background:var(--line-soft);border-radius:6px;padding:2px 8px}
+.tpl-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+.tpl-foot .tf-hint{font-size:10.5px;color:var(--faint)}
+.src-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.src-card{border:1.5px solid var(--line);border-radius:12px;padding:13px;cursor:pointer;transition:.15s;background:#fff}
+.src-card:hover{border-color:var(--primary)}
+.src-card.on{border-color:var(--primary);background:var(--primary-soft)}
+.src-card .sc-ico{width:32px;height:32px;border-radius:9px;background:var(--line-soft);color:var(--muted);display:flex;align-items:center;justify-content:center;margin-bottom:9px}
+.src-card.on .sc-ico{background:#fff;color:var(--primary)}
+.src-card .sc-ico svg{width:15px;height:15px}
+.src-card b{font-size:12.5px;display:flex;align-items:center;gap:6px}
+.src-card .sc-rec{font-size:9.5px;background:var(--red-soft);color:var(--red);border-radius:5px;padding:1px 6px;font-weight:700}
+.src-card p{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.6}
+.src-card .sc-state{font-size:10.5px;margin-top:8px;color:var(--green);font-weight:600}
+.src-card .sc-state.gray{color:var(--faint);font-weight:400}
+.bring-box{border:1px dashed var(--line);border-radius:11px;padding:12px 14px;background:#fbfcfe}
+.bring-box .bb-title{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.bring-box .bb-title svg{width:13px;height:13px;color:var(--primary)}
+.try-box{border:1px solid var(--line-soft);border-radius:12px;overflow:hidden}
+.try-hd{display:flex;align-items:center;gap:8px;padding:11px 14px;background:#f0faf5;border-bottom:1px solid var(--line-soft);font-size:12.5px;font-weight:700;color:var(--green);flex-wrap:wrap}
+.try-hd svg{width:14px;height:14px}
+.try-hd .try-meta{margin-left:auto;font-size:11px;color:var(--muted);font-weight:400}
+.try-body{padding:13px 14px;font-size:12.5px;color:var(--text);line-height:1.8}
+.try-body .tb-note{font-size:11px;color:var(--faint);margin-top:9px;border-top:1px dashed var(--line-soft);padding-top:9px;line-height:1.6}
+.time-mini{width:88px;height:32px;text-align:center;font-size:12.5px}
 </style>
 </head>
 <body>
@@ -385,16 +775,68 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
 <symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 9h.01M15 9h.01M8 13a8 8 0 0 0 8 0M9.5 16.5c1.5 1 3.5 1 5 0"/></symbol>
 <symbol id="i-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
+<symbol id="i-store" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></symbol>
+<symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+<symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
 </defs>
 </svg>
 
-<div class="app">
+<!-- ===== 登录页（SSO 统一认证 · PRD 8.5） ===== -->
+<div class="login-view" id="viewLogin">
+  <div class="login-panel">
+    <div class="login-brand">
+      <div class="lb-logo"><svg><use href="#i-spark"/></svg></div>
+      <div class="lb-name">Chat-<em>Work</em> Agent</div>
+      <div class="lb-slogan">你的 AI 工作助手 · 对话即工作</div>
+      <div class="lb-feats">
+        <div class="lb-feat"><svg><use href="#i-cart"/></svg><div><b>单据录入</b><span>自然语言录单 · HITL 确认卡 · 幂等防重复提交</span></div></div>
+        <div class="lb-feat"><svg><use href="#i-chart"/></svg><div><b>查询与报表</b><span>只读模式 · 权限范围内数据 · 一句话出统计</span></div></div>
+        <div class="lb-feat"><svg><use href="#i-brain"/></svg><div><b>记忆与知识</b><span>个人偏好沉淀 · 制度 SOP 即问即答（RAG）</span></div></div>
+        <div class="lb-feat"><svg><use href="#i-zap"/></svg><div><b>自动化任务</b><span>定时早报 · 超时提醒 · 事件触发（Phase 2）</span></div></div>
+      </div>
+      <div class="lb-foot">覆盖 OA / BI / CRM / ERP / WMS… · 每一步操作均可审计</div>
+    </div>
+    <div class="login-form">
+      <b class="lf-title">登录</b>
+      <span class="lf-sub">使用公司统一身份认证（Identity Broker · OIDC），无需单独注册</span>
+      <button class="sso-btn" onclick="login('ad',this)">
+        <span class="sso-ico sso-ad"><svg><use href="#i-key"/></svg></span>
+        <span class="sso-meta"><b>AD 域账号</b><span>办公网推荐 · Authorization Code + PKCE</span></span>
+        <svg style="width:15px;height:15px;color:var(--faint)"><use href="#i-chev" transform="rotate(-90 12 12)"/></svg>
+      </button>
+      <button class="sso-btn" onclick="login('wecom',this)">
+        <span class="sso-ico sso-wecom"><svg><use href="#i-chat"/></svg></span>
+        <span class="sso-meta"><b>企业微信</b><span>企微内打开免登 · JSSDK 换 userid</span></span>
+        <svg style="width:15px;height:15px;color:var(--faint)"><use href="#i-chev" transform="rotate(-90 12 12)"/></svg>
+      </button>
+      <button class="sso-btn" onclick="login('dingtalk',this)">
+        <span class="sso-ico sso-ding"><svg><use href="#i-grid"/></svg></span>
+        <span class="sso-meta"><b>钉钉</b><span>企业内部应用免登 · unionid 映射</span></span>
+        <svg style="width:15px;height:15px;color:var(--faint)"><use href="#i-chev" transform="rotate(-90 12 12)"/></svg>
+      </button>
+      <div class="lf-tip"><svg><use href="#i-info"/></svg><div>首次登录将根据 HR 主数据自动关联你的科室、角色与权限（A-02 组织自动加入 / A-03 个人档案），账号生命周期与集团 AD 同步。</div></div>
+      <div class="lf-sec"><svg><use href="#i-shield"/></svg><div>Token 不落浏览器（后端兑换）· 会话 HttpOnly Cookie · 等保 2.0 三级 · 操作全程审计（≥180 天）</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="viewApp" style="display:none">
   <!-- ===== 顶栏 ===== -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-mark"><svg><use href="#i-spark"/></svg></div>
       <div class="brand-name">Chat-<em>Work</em> Agent</div>
-      <div class="proto-badge">PRD v1.6 · 交互原型 · 演示：销售科 张明</div>
+      <div class="proto-badge">PRD v1.7 · 交互原型 · 演示：销售科 张明</div>
     </div>
     <div class="topbar-search">
       <svg><use href="#i-search"/></svg>
@@ -402,11 +844,12 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
       <span class="kbd">Alt+Space · Quick Ask</span>
     </div>
     <div class="topbar-right">
-      <button class="icon-btn" title="通知（3 条未读）"><svg><use href="#i-bell"/></svg><span class="dot"></span></button>
-      <button class="icon-btn" title="设置"><svg><use href="#i-gear"/></svg></button>
-      <div class="user-chip">
+      <button class="icon-btn" title="通知（3 条未读）" onclick="toast('演示原型：审批超时提醒 ×1 · 自动化结果 ×1 · 技能更新 ×1','info')"><svg><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <button class="icon-btn" title="设置" onclick="switchView('settings')"><svg><use href="#i-gear"/></svg></button>
+      <div class="user-chip" style="cursor:pointer" onclick="switchView('settings')" title="个人设置">
         <div class="avatar">张</div>
         <div class="user-meta"><b>张明</b><span>销售科 · EMP002345</span></div>
+        <svg style="width:14px;height:14px;color:var(--faint)"><use href="#i-chev"/></svg>
       </div>
     </div>
   </header>
@@ -417,10 +860,15 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
       <button class="new-chat"><svg><use href="#i-plus"/></svg>新建会话</button>
       <div class="nav-group">
         <div class="nav-label">工作台</div>
-        <div class="nav-item active"><svg><use href="#i-chat"/></svg>会话</div>
-        <div class="nav-item"><svg><use href="#i-grid"/></svg>技能市场<span class="phase-tag">Phase 2</span></div>
-        <div class="nav-item"><svg><use href="#i-book"/></svg>知识库<span class="phase-tag">Phase 2</span></div>
-        <div class="nav-item"><svg><use href="#i-zap"/></svg>自动化<span class="phase-tag">Phase 2</span></div>
+        <div class="nav-item active" data-view="chat" onclick="switchView('chat')"><svg><use href="#i-chat"/></svg>会话</div>
+        <div class="nav-item" data-view="market" onclick="switchView('market')"><svg><use href="#i-store"/></svg>技能市场<span class="phase-tag">Phase 2</span></div>
+        <div class="nav-item" data-view="kb" onclick="switchView('kb')"><svg><use href="#i-db"/></svg>知识库<span class="phase-tag">Phase 2</span></div>
+        <div class="nav-item" data-view="auto" onclick="switchView('auto')"><svg><use href="#i-zap"/></svg>自动化<span class="phase-tag">Phase 2</span></div>
+      </div>
+      <div class="nav-group" style="margin-top:10px">
+        <div class="nav-label">个人</div>
+        <div class="nav-item" data-view="memory" onclick="switchView('memory')"><svg><use href="#i-brain"/></svg>我的记忆</div>
+        <div class="nav-item" data-view="settings" onclick="switchView('settings')"><svg><use href="#i-gear"/></svg>设置</div>
       </div>
       <div class="nav-group" style="margin-top:10px">
         <div class="nav-label">最近会话</div>
@@ -438,13 +886,17 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
           <div class="conv-ico ci-bi"><svg><use href="#i-chart"/></svg></div>
           <div class="conv-meta"><b>BI 数据查询</b><span>本月销售额 · 按产品线</span></div>
         </div>
+        <div class="conv-item" data-conv="erp" onclick="switchConv('erp')">
+          <div class="conv-ico ci-order"><svg><use href="#i-grid"/></svg></div>
+          <div class="conv-meta"><b>ERP 复杂单据</b><span>多级明细 · 12 行物料</span></div>
+        </div>
       </div>
       <div class="sidebar-foot">
-        <div class="my-skills"><span><b>我的技能</b> · 5 个</span></div>
-        <div class="skill-pill"><svg style="color:#4f46e5"><use href="#i-cart"/></svg>销售订单录入</div>
-        <div class="skill-pill"><svg style="color:#d97706"><use href="#i-file"/></svg>待办审批</div>
-        <div class="skill-pill"><svg style="color:#0e9f6e"><use href="#i-chart"/></svg>BI 数据查询</div>
-        <div class="skill-pill"><svg style="color:#71798c"><use href="#i-book"/></svg>工作周报生成</div>
+        <div class="my-skills"><span><b>我的技能</b> · 5 个</span><span style="color:var(--primary);cursor:pointer;font-weight:600" onclick="switchView('market')">市场</span></div>
+        <div class="skill-pill" style="cursor:pointer" onclick="switchConv('order')"><svg style="color:#4f46e5"><use href="#i-cart"/></svg>销售订单录入</div>
+        <div class="skill-pill" style="cursor:pointer" onclick="switchConv('approve')"><svg style="color:#d97706"><use href="#i-file"/></svg>待办审批</div>
+        <div class="skill-pill" style="cursor:pointer" onclick="switchConv('bi')"><svg style="color:#0e9f6e"><use href="#i-chart"/></svg>BI 数据查询</div>
+        <div class="skill-pill" style="cursor:pointer" onclick="toast('演示原型：weekly_report（Plan 模式）—— 汇总操作记录+待办+BI 摘要 → 生成周报草稿','info')"><svg style="color:#71798c"><use href="#i-book"/></svg>工作周报生成</div>
       </div>
     </aside>
 
@@ -751,6 +1203,224 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
             </div>
           </div>
 
+          <!-- ================= 会话 4：ERP 复杂单据（主表·子表·孙表） ================= -->
+          <div class="conv-page" id="conv-erp">
+            <div class="sys-note">
+              <svg><use href="#i-shield"/></svg>
+              <div>已通过 SSO 登录（AD 域）· 身份 <b>张明 · 销售科</b> · 权限范围：<b>ERP 销售单据读写</b>（主/子/孙三级）<span class="sep">|</span>物料主数据只读<span class="sep">|</span>操作均记录审计日志</div>
+            </div>
+            <div class="day-sep">今天 · 2026-09-16</div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">帮我在 ERP 录一张销售订单：客户深圳华强电子，5G 通信模块 5000 个、超宽版 2000 个，再把上次那批备件也带上，交货 10 月 20 号</div><div class="msg-time">10:05</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">意图识别</span>
+                      <span class="th-step done">技能路由</span>
+                      <span class="th-step warn">物料歧义</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">技能路由</span><span>命中 <code>erp_sales_order_entry</code> · 单据结构：主表 86 字段（8 组）→ 子表（物料行）→ 孙表（批次/序列号）</span></div>
+                    <div class="dt-row"><span class="dt-k">参数提取</span><span>客户=深圳华强电子 ✓ · 交货日期=2026-10-20 ✓ · 物料=<span class="warn">歧义待消解</span></span></div>
+                    <div class="dt-row"><span class="dt-k">物料检索</span><span><code>erp__search_material</code> · 物料主数据 12,847 条 · "5G 通信模块"命中 <b>3 个候选</b>（标准版/超宽版/工业级）——不猜，需人工点选</span></div>
+                    <div class="dt-row"><span class="dt-k">记忆恢复</span><span>L2 个人记忆命中"上次备件清单"（2026-08-18 · SO-20260818-0027 · 10 行）——待你确认后带入子表</span></div>
+                  </div>
+                </div>
+
+                <div class="bubble">收到。客户、交货日期都已就位，但<b>"5G 通信模块"</b>在物料库命中 3 个候选——物料选错整单报废，这一步必须由你点选：</div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <div class="c-ico ico-blue"><svg><use href="#i-grid"/></svg></div>
+                    <div class="c-title"><b>物料匹配 · "5G 通信模块"</b><span>物料主数据 12,847 条 · 模糊检索 · 常用物料（L2 记忆）置顶</span></div>
+                    <div class="c-badges"><span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>歧义必选</span></div>
+                  </div>
+                  <div class="mat-list">
+                    <div class="mat-hd"><div>物料</div><div>规格</div><div>单位</div><div>可用库存</div><div>协议价</div><div>操作</div></div>
+                    <div class="mat-row">
+                      <div class="mat-name"><b>5G 通信模块 · 标准版</b><span>SP-1024 · 常用（记忆置顶）</span></div>
+                      <div class="mat-spec">FR4 · 100×80mm · v2.3</div>
+                      <div>件</div>
+                      <div class="mat-stock"><b>8,200</b></div>
+                      <div class="mat-price">¥128.00</div>
+                      <button class="mini-btn" onclick="pickMat(this)">选用</button>
+                    </div>
+                    <div class="mat-row">
+                      <div class="mat-name"><b>5G 通信模块 · 超宽版</b><span>SP-1024W · 对话已指定 2,000 个</span></div>
+                      <div class="mat-spec">FR4 · 160×120mm · v2.3</div>
+                      <div>件</div>
+                      <div class="mat-stock"><b>1,450</b></div>
+                      <div class="mat-price">¥156.00</div>
+                      <span class="f-tag t-ask" style="border:none">已锁定</span>
+                    </div>
+                    <div class="mat-row">
+                      <div class="mat-name"><b>5G 通信模块 · 工业级</b><span>SP-1024M</span></div>
+                      <div class="mat-spec">金属外壳 · -40~85℃</div>
+                      <div>件</div>
+                      <div class="mat-stock"><b>640</b></div>
+                      <div class="mat-price">¥189.00</div>
+                      <button class="mini-btn" onclick="pickMat(this)">选用</button>
+                    </div>
+                  </div>
+                  <div class="mat-hint"><svg><use href="#i-warn"/></svg>设计原则：物料歧义必须人工点选，AI 不猜。上万种物料绝不在对话中罗列——搜索联想 + 批量导入（Excel/CSV 粘贴）走同一校验。</div>
+                </div>
+                <div class="msg-time">10:05</div>
+              </div>
+            </div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">用标准版。备件照上次 8 月那单的配置来</div><div class="msg-time">10:06</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">思考与执行</span>
+                    <div class="th-steps">
+                      <span class="th-step done">物料锁定</span>
+                      <span class="th-step done">记忆带入</span>
+                      <span class="th-step done">默认值带出</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">物料锁定</span><span>SP-1024 × 5,000 + SP-1024W × 2,000 · 协议价带出</span></div>
+                    <div class="dt-row"><span class="dt-k">记忆带入</span><span>L2 恢复上次备件 10 行（数量按历史 ×1.0，逐行可改）</span></div>
+                    <div class="dt-row"><span class="dt-k">字段填充</span><span>主表 86 字段：81 个自动带出（客户主数据 34 / 协议价 6 / L2 记忆 12 / 默认值 29）· 待补必填 5 个已由对话补齐</span></div>
+                    <div class="dt-row"><span class="dt-k">行级校验</span><span>协议价比对 + 可用批期检查 → <span class="warn">2 行异常</span>（见下方警示）</span></div>
+                  </div>
+                </div>
+
+                <div class="bubble">草稿 v1 已生成：<b>主表 86 字段（81 个自动带出）· 子表 12 行 · 3 个物料组</b>。对话里只看摘要，2 处异常需要你注意：</div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <div class="c-ico ico-blue"><svg><use href="#i-grid"/></svg></div>
+                    <div class="c-title"><b>ERP 销售订单 · 草稿 v1</b><span>单号预分配 ERP-SO-20260916-0412 · 技能 erp_sales_order_entry</span></div>
+                    <div class="c-badges"><span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>直接执行</span><span class="cbadge cb-perm"><svg><use href="#i-shield"/></svg>权限已校验</span></div>
+                  </div>
+                  <div class="form-rows">
+                    <div class="form-row"><div class="f-label">客户名称<span class="req">*</span></div><div class="f-value">深圳华强电子有限公司（事业部A）</div><span class="f-tag t-sys">系统匹配</span></div>
+                    <div class="form-row"><div class="f-label">订单类型</div><div class="f-value">标准销售订单 · CNY · 含税 13%</div><span class="f-tag t-def">默认值</span></div>
+                    <div class="form-row"><div class="f-label">交货日期<span class="req">*</span></div><div class="f-value">2026-10-20（周二）</div><span class="f-tag t-ask">对话获得</span></div>
+                    <div class="form-row"><div class="f-label">付款条件</div><div class="f-value">月结 30 天 · 2026-09 渠道协议价</div><span class="f-tag t-def">客户默认</span></div>
+                  </div>
+                  <div class="sum-strip">
+                    <div class="sum-cell"><b>12 行 · 3 组</b><span>子表明细（主物料 2 · 备件 10）</span></div>
+                    <div class="sum-cell"><b>¥1,713,400</b><span>合计金额（含税 · 自动计算）</span></div>
+                    <div class="sum-cell"><b>86 字段</b><span>主表 · 81 个自动带出</span></div>
+                  </div>
+                  <div class="sum-warns">
+                    <div class="sw-row"><svg><use href="#i-warn"/></svg><div><b>第 4 行 · 电源模块：</b>单价 ¥92.00 偏离协议价 ¥85.00（+8.2%），超出容差 5% 需确认</div></div>
+                    <div class="sw-row"><svg><use href="#i-warn"/></svg><div><b>第 9 行 · 测试治具：</b>最早可用批期 2026-10-23，晚于交货要求 10-20（孙表批次可查）</div></div>
+                  </div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="openDoc(false)"><svg><use href="#i-grid"/></svg>展开完整单据</button>
+                    <button class="btn btn-ghost" onclick="openDoc(true)"><svg><use href="#i-warn"/></svg>仅看异常行</button>
+                    <button class="btn btn-primary" onclick="toast('演示原型：存在 2 处异常，需先处理（价格偏离确认 / 交期风险知悉）再提交 —— 分级确认设计','info')"><svg><use href="#i-check"/></svg>确认提交</button>
+                  </div>
+                </div>
+                <div class="msg-time">10:06</div>
+              </div>
+            </div>
+
+            <div class="msg user">
+              <div class="msg-avatar av-user">张</div>
+              <div class="msg-body"><div class="bubble">第 3 行数量改成 3000 套，所有行交货日期提前 3 天</div><div class="msg-time">10:08</div></div>
+            </div>
+
+            <div class="msg">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="think">
+                  <div class="think-head" onclick="this.parentElement.classList.toggle('open')">
+                    <svg style="width:15px;height:15px;color:#4f46e5"><use href="#i-spark"/></svg>
+                    <span class="th-title">变更解析</span>
+                    <div class="th-steps">
+                      <span class="th-step done">指令解析</span>
+                      <span class="th-step done">生成草稿 v2</span>
+                    </div>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                  </div>
+                  <div class="think-detail">
+                    <div class="dt-row"><span class="dt-k">指令解析</span><span>行级修改 1 处（第 3 行数量）+ 批量修改 12 处（交货日期）→ 共 <b>13 处变更</b>，生成草稿 v2</span></div>
+                    <div class="dt-row"><span class="dt-k">影响面</span><span>金额联动重算：第 3 行 ¥124,000 → ¥186,000 · 整单 ¥1,713,400 → ¥1,775,400</span></div>
+                    <div class="dt-row"><span class="dt-k">风险联动</span><span>第 9 行批期 10-23 仍晚于新交期 10-17 → <span class="warn">交期风险加剧</span></span></div>
+                    <div class="dt-row"><span class="dt-k">双轨编辑</span><span>自然语言修改 ↔ 工作台表格点选修改，状态双向同步（工作台改动会回写对话上下文）</span></div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <div class="c-ico ico-blue"><svg><use href="#i-edit"/></svg></div>
+                    <div class="c-title"><b>草稿 v2 · 13 处变更</b><span>变更以 diff 呈现，确认后覆盖 v1</span></div>
+                    <div class="c-badges"><span class="cbadge cb-ask"><svg><use href="#i-warn"/></svg>需重新确认</span></div>
+                  </div>
+                  <div class="diff-box">
+                    <div class="diff-row"><span class="dk">第 3 行 · 数量</span><span class="d-old">2,000 套</span><span class="d-arrow">→</span><span class="d-new">3,000 套</span><span class="d-note">金额 ¥124,000 → ¥186,000</span></div>
+                    <div class="diff-row"><span class="dk">第 1~12 行 · 交货日期</span><span class="d-old">10-20</span><span class="d-arrow">→</span><span class="d-new">10-17</span><span class="d-note">12 行统一提前 3 天</span></div>
+                    <div class="diff-row"><span class="dk">合计金额</span><span class="d-old">¥1,713,400</span><span class="d-arrow">→</span><span class="d-new">¥1,775,400</span><span class="d-note">+¥62,000 · 触发大额阈值（≥100 万）</span></div>
+                  </div>
+                  <div class="card-hint"><svg><use href="#i-warn"/></svg>分级确认：金额 ≥ 100 万 → 强制处理异常后提交。第 4 行价格偏离 + 第 9 行交期风险（批期 10-23 仍晚于新交期 10-17）。</div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="openDoc(true)"><svg><use href="#i-warn"/></svg>查看异常行</button>
+                    <button class="btn btn-primary" onclick="erpSubmit(this)"><svg><use href="#i-check"/></svg>异常已知晓 · 确认提交</button>
+                  </div>
+                </div>
+                <div class="msg-time">10:08</div>
+              </div>
+            </div>
+
+            <!-- 成功卡（提交后由 JS 显示） -->
+            <div class="msg" id="erpSuccess" style="display:none">
+              <div class="msg-avatar av-agent"><svg><use href="#i-spark"/></svg></div>
+              <div class="msg-body">
+                <div class="card">
+                  <div class="pipeline">
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>权限校验</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>生成幂等键</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>写入 ERP 三级结构</div>
+                    <div class="pl-step done"><span class="pl-dot"><svg><use href="#i-check"/></svg></span>触发审批流</div>
+                  </div>
+                  <div class="success-band">
+                    <div class="success-check"><svg><use href="#i-check"/></svg></div>
+                    <div class="success-info">
+                      <b>ERP 销售订单创建成功</b>
+                      <div class="order-no">ERP-SO-20260916-0412</div>
+                      <span>主表 86 字段 · 子表 12 行 · 孙表 18 条批次 · 已按幂等键防重提交</span>
+                    </div>
+                  </div>
+                  <div class="result-rows">
+                    <div class="result-row"><span class="rr-k">写入系统</span><span class="rr-v">ERP · 销售管理（主/子/孙三级 · 事务一致性）</span><span class="rr-badge rb-green">成功</span></div>
+                    <div class="result-row"><span class="rr-k">异常确认</span><span class="rr-v">价格偏离（第 4 行）与交期风险（第 9 行）已随单留痕</span><span class="rr-badge rb-blue">已记录</span></div>
+                    <div class="result-row"><span class="rr-k">审批流</span><span class="rr-v">大额（≥100 万）：销售主管 李强 → 事业部经理 → 财务复核（3 级）</span><span class="rr-badge rb-blue">流转中</span></div>
+                    <div class="result-row"><span class="rr-k">后续提醒</span><span class="rr-v">第 9 行批期到货（10-23）自动提醒；审批超 24h 未处理主动提醒</span></div>
+                  </div>
+                  <div class="card-actions">
+                    <button class="btn btn-ghost" onclick="openDoc(false)"><svg><use href="#i-grid"/></svg>查看完整单据</button>
+                    <button class="btn btn-success" onclick="toast('单据卡片已复制，可粘贴到企微群','ok')"><svg><use href="#i-file"/></svg>转发给同事</button>
+                  </div>
+                </div>
+                <div class="msg-time">10:09</div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -780,8 +1450,403 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
       </div>
     </main>
 
+    <!-- ================= 页面视图：技能市场（PRD 3.4） ================= -->
+    <section class="page-view" id="page-market">
+      <div class="pv-scroll">
+        <div class="pv-inner">
+          <div class="pv-head">
+            <div class="pv-ico ico-blue"><svg><use href="#i-store"/></svg></div>
+            <div class="pv-title"><b>技能市场</b><span>官方技能 · 科室共享 · 个人快捷 —— 浏览、安装、上架（Phase 2）</span></div>
+            <div class="pv-actions">
+              <div class="pv-search"><svg><use href="#i-search"/></svg><input type="text" placeholder="搜索技能 / 问法 / 发布者"></div>
+              <button class="btn btn-ghost" onclick="openPub()"><svg><use href="#i-upload"/></svg>上架技能</button>
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-card"><div class="s-v" style="color:var(--primary)">5</div><div class="s-l">官方技能（MVP 已上线）</div></div>
+            <div class="stat-card"><div class="s-v" style="color:var(--green)">12</div><div class="s-l">科室技能（含审核中 2）</div></div>
+            <div class="stat-card"><div class="s-v">2,340</div><div class="s-l">总安装量</div></div>
+            <div class="stat-card"><div class="s-v">★4.8</div><div class="s-l">平均评分（使用反馈）</div></div>
+          </div>
+          <div class="tabs">
+            <button class="tab active" onclick="mkTab(this,'all')">全部</button>
+            <button class="tab" onclick="mkTab(this,'off')">官方技能</button>
+            <button class="tab" onclick="mkTab(this,'dept')">科室技能</button>
+            <button class="tab" onclick="mkTab(this,'mine')">个人快捷</button>
+          </div>
+          <div class="skill-grid">
+            <div class="skill-card" data-cat="off">
+              <div class="sk-top"><div class="sk-ico ci-skill-blue"><svg><use href="#i-cart"/></svg></div><div class="sk-meta"><b>销售订单录入</b><span>信息科 · 官方 · v1.2.0</span></div><span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>Craft</span></div>
+              <div class="sk-desc">查客户 → 带出默认值 → 表单确认（HITL）→ 幂等写入 OA → 返回单号并触发审批流</div>
+              <div class="sk-chips"><span class="sk-chip">"录一张销售订单"</span><span class="sk-chip">"帮我下单"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.9 · 1,024 安装</span><button class="mini-btn installed" disabled>已安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="off">
+              <div class="sk-top"><div class="sk-ico ci-skill-amber"><svg><use href="#i-file"/></svg></div><div class="sk-meta"><b>待办审批</b><span>信息科 · 官方 · v1.0.3</span></div><span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>Craft</span></div>
+              <div class="sk-desc">聚合 OA 待办 → 列表卡片 → 详情 → 行内二次确认 → 审批/驳回 + 通知发起人</div>
+              <div class="sk-chips"><span class="sk-chip">"我有哪些待办审批"</span><span class="sk-chip">"同意第 1 条"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.8 · 892 安装</span><button class="mini-btn installed" disabled>已安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="off">
+              <div class="sk-top"><div class="sk-ico ci-skill-green"><svg><use href="#i-chart"/></svg></div><div class="sk-meta"><b>BI 数据查询</b><span>信息科 · 官方 · v1.1.0</span></div><span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>Ask</span></div>
+              <div class="sk-desc">意图转查询 → 权限范围过滤 → 执行 → KPI/图表卡片 → 支持追加维度与导出（只读）</div>
+              <div class="sk-chips"><span class="sk-chip">"查一下本月销售额"</span><span class="sk-chip">"按产品线分"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.7 · 764 安装</span><button class="mini-btn installed" disabled>已安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="off">
+              <div class="sk-top"><div class="sk-ico ci-skill-blue"><svg><use href="#i-cart"/></svg></div><div class="sk-meta"><b>请购单录入</b><span>信息科 · 官方 · v1.2.1</span></div><span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>Craft</span></div>
+              <div class="sk-desc">匹配供应商 → 带采购协议价 → 预算校验 → 表单确认（HITL）→ 创建请购单</div>
+              <div class="sk-chips"><span class="sk-chip">"帮我提一个请购"</span><span class="sk-chip">"铝外壳 2000 个"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.8 · 655 安装</span><button class="mini-btn agree" onclick="installSkill(this,true)"><svg><use href="#i-download"/></svg>安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="off">
+              <div class="sk-top"><div class="sk-ico ci-skill-amber"><svg><use href="#i-book"/></svg></div><div class="sk-meta"><b>工作周报生成</b><span>信息科 · 官方 · v1.0.0</span></div><span class="cbadge cb-ask" style="background:var(--amber-soft);color:var(--amber)"><svg><use href="#i-chart"/></svg>Plan</span></div>
+              <div class="sk-desc">汇总本人操作记录 + 待办 + BI 摘要 → 生成周报草稿（先出执行计划卡）→ 编辑 → 导出/发送</div>
+              <div class="sk-chips"><span class="sk-chip">"生成本周周报"</span><span class="sk-chip">"上周做了什么"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.6 · 431 安装</span><button class="mini-btn installed" disabled>已安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="dept">
+              <div class="sk-top"><div class="sk-ico ci-skill-gray"><svg><use href="#i-grid"/></svg></div><div class="sk-meta"><b>库存查询</b><span>仓库物流 · 科室 · Phase 2 建设中</span></div><span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>Ask</span></div>
+              <div class="sk-desc">对接 WMS：按物料/仓库查询库存、在途、安全阈值预警（wms__query_stock）</div>
+              <div class="sk-chips"><span class="sk-chip">"SP-1024 还有多少库存"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.5 · 118 安装</span><button class="mini-btn disabled" disabled>未开放</button></div>
+            </div>
+            <div class="skill-card" data-cat="dept">
+              <div class="sk-top"><div class="sk-ico ci-skill-green"><svg><use href="#i-clock"/></svg></div><div class="sk-meta"><b>合同到期提醒</b><span>法务科 · 科室 · v1.0.0</span></div><span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>Ask</span></div>
+              <div class="sk-desc">订阅合同台账事件 → 到期前 7/30 天生成提醒 → 推送会话与企微（事件触发）</div>
+              <div class="sk-chips"><span class="sk-chip">"哪些合同快到期"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.7 · 45 安装</span><button class="mini-btn agree" onclick="installSkill(this,true)"><svg><use href="#i-download"/></svg>安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="dept">
+              <div class="sk-top"><div class="sk-ico ci-skill-red"><svg><use href="#i-coin"/></svg></div><div class="sk-meta"><b>差旅报销助手</b><span>人力资源科 · 科室 · v0.9.2</span></div><span class="cbadge cb-ask" style="background:var(--amber-soft);color:var(--amber)"><svg><use href="#i-chart"/></svg>Plan</span></div>
+              <div class="sk-desc">聚合差旅申请与发票 → 预填报销单 → 核对补贴标准 → 提交（HITL 确认）</div>
+              <div class="sk-chips"><span class="sk-chip">"报销上次出差"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.4 · 87 安装</span><button class="mini-btn noperm" onclick="installSkill(this,false)" title="需要 hr:expense:read 权限">缺权限</button></div>
+            </div>
+            <div class="skill-card" data-cat="mine">
+              <div class="sk-top"><div class="sk-ico ci-skill-blue"><svg><use href="#i-chart"/></svg></div><div class="sk-meta"><b>我的报价查询</b><span>刘洋 · 个人（已共享本科室）</span></div><span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>Ask</span></div>
+              <div class="sk-desc">按客户/产品查询我发出的历史报价单（个人快捷 · 仅只读工具）</div>
+              <div class="sk-chips"><span class="sk-chip">"华强上次报价多少"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.6 · 23 安装</span><button class="mini-btn agree" onclick="installSkill(this,true)"><svg><use href="#i-download"/></svg>安装</button></div>
+            </div>
+            <div class="skill-card" data-cat="mine">
+              <div class="sk-top"><div class="sk-ico ci-skill-amber"><svg><use href="#i-plane"/></svg></div><div class="sk-meta"><b>客户拜访小结</b><span>陈晨 · 个人</span></div><span class="cbadge cb-ask" style="background:var(--amber-soft);color:var(--amber)"><svg><use href="#i-chart"/></svg>Plan</span></div>
+              <div class="sk-desc">读取本周拜访日程 → 按模板生成拜访纪要草稿 → 引用科室知识库话术</div>
+              <div class="sk-chips"><span class="sk-chip">"生成这周拜访小结"</span></div>
+              <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.5 · 12 安装</span><button class="mini-btn agree" onclick="installSkill(this,true)"><svg><use href="#i-download"/></svg>安装</button></div>
+            </div>
+          </div>
+          <div class="pv-note"><svg><use href="#i-shield"/></svg>安装即校验权限：安装技能 = 授予其声明的工具权限子集（如 oa:sales_order:create）；权限不足的技能不可安装并显示原因（如"差旅报销助手"缺少 hr:expense:read）。科室技能含写入工具必须经信息科审核后发布；个人快捷技能仅限只读工具或本人数据。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 页面视图：知识库（PRD 9.5） ================= -->
+    <section class="page-view" id="page-kb">
+      <div class="pv-scroll">
+        <div class="pv-inner">
+          <div class="pv-head">
+            <div class="pv-ico ico-green"><svg><use href="#i-db"/></svg></div>
+            <div class="pv-title"><b>知识库</b><span>制度 · SOP · FAQ · 案例 —— RAG 注入任务上下文，回答必附来源</span></div>
+            <div class="pv-actions">
+              <div class="pv-search"><svg><use href="#i-search"/></svg><input type="text" placeholder="全文检索：标题 / 内容 / 标签"></div>
+              <button class="btn btn-primary" onclick="toast('演示原型：上传 docx/pdf/xlsx/md → 自动解析与切片（300~500 Token）→ 涉密检测 → 管理员审核 → 向量化入库','info')"><svg><use href="#i-upload"/></svg>上传文档</button>
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-card"><div class="s-v" style="color:var(--primary)">128</div><div class="s-l">文档总数（集团 96 + 科室 32）</div></div>
+            <div class="stat-card"><div class="s-v" style="color:var(--green)">6</div><div class="s-l">本月新增（入库）</div></div>
+            <div class="stat-card"><div class="s-v">3,214</div><div class="s-l">累计引用次数（RAG 命中）</div></div>
+            <div class="stat-card"><div class="s-v" style="color:var(--amber)">2</div><div class="s-l">待审核</div></div>
+          </div>
+          <div class="tabs">
+            <button class="tab active" onclick="toast('演示原型：集团知识库 —— 全员可见，按文档密级（D1-D3）过滤','info')">集团知识库</button>
+            <button class="tab" onclick="toast('演示原型：科室知识空间 —— 销售科 SOP / 典型案例 / 审批口径 / 术语表，本科室可见','info')">科室知识空间（销售科）</button>
+          </div>
+          <div class="card">
+            <div class="doc-row">
+              <div class="doc-ico ico-blue"><svg><use href="#i-file"/></svg></div>
+              <div class="doc-main"><b>《销售订单管理办法 v3.2》</b><div class="d-sub"><span>制度</span><span>2026-08-30 更新</span><span>来源：OA 制度库定时同步</span></div></div>
+              <div class="d-badges"><span class="d-badge d-d2">D2 内部</span><span class="d-badge d-ok">已生效</span></div>
+              <div class="doc-ref"><b>486</b>引用</div>
+              <button class="mini-btn" onclick="toast('演示原型：引用记录 —— 最近被「订单录入确认卡」「制度问答」引用，均附本文档名+章节','info')">引用记录</button>
+            </div>
+            <div class="doc-row">
+              <div class="doc-ico ico-green"><svg><use href="#i-chart"/></svg></div>
+              <div class="doc-main"><b>《事业部A 促销审批口径》</b><div class="d-sub"><span>SOP</span><span>2026-09-02 更新</span><span>来源：科室上传（主管审核）</span></div></div>
+              <div class="d-badges"><span class="d-badge d-d2">D2 内部</span><span class="d-badge d-ok">已生效</span></div>
+              <div class="doc-ref"><b>213</b>引用</div>
+              <button class="mini-btn" onclick="toast('演示原型：查看正文与切片预览（按标题层级切片）','info')">查看</button>
+            </div>
+            <div class="doc-row">
+              <div class="doc-ico ico-amber"><svg><use href="#i-lock"/></svg></div>
+              <div class="doc-main"><b>《客户信息使用规范》</b><div class="d-sub"><span>制度</span><span>2026-07-18 更新</span><span>来源：法务科</span></div></div>
+              <div class="d-badges"><span class="d-badge d-d3">D3 敏感</span><span class="d-badge d-ok">已生效 · 脱敏展示</span></div>
+              <div class="doc-ref"><b>87</b>引用</div>
+              <button class="mini-btn" onclick="toast('演示原型：D3 文档 —— 回答时自动脱敏（如 138****5678），导出加水印','info')">查看</button>
+            </div>
+            <div class="doc-row">
+              <div class="doc-ico ico-blue"><svg><use href="#i-chat"/></svg></div>
+              <div class="doc-main"><b>《销售科新员工 FAQ》</b><div class="d-sub"><span>FAQ</span><span>2026-09-14 提交</span><span>来源：L3 高频问法固化</span></div></div>
+              <div class="d-badges"><span class="d-badge d-d2">D2 内部</span><span class="d-badge d-review">审核中 · 科室管理员</span></div>
+              <div class="doc-ref" style="color:var(--faint)">—</div>
+              <button class="mini-btn" onclick="toast('演示原型：解析预览 —— 自动展示切片效果，审核通过后向量化入库','info')">解析预览</button>
+            </div>
+            <div class="doc-row">
+              <div class="doc-ico ico-green"><svg><use href="#i-book"/></svg></div>
+              <div class="doc-main"><b>《大客户案例集 2026H1》</b><div class="d-sub"><span>案例</span><span>2026-09-08 更新</span><span>来源：会话产物沉淀</span></div></div>
+              <div class="d-badges"><span class="d-badge d-d2">D2 内部</span><span class="d-badge d-ok">已生效</span></div>
+              <div class="doc-ref"><b>156</b>引用</div>
+              <button class="mini-btn" onclick="toast('演示原型：查看案例正文（自动关联产品线标签）','info')">查看</button>
+            </div>
+            <div class="doc-row">
+              <div class="doc-ico" style="background:var(--red-soft);color:var(--red)"><svg><use href="#i-x"/></svg></div>
+              <div class="doc-main"><b>《退货流程 SOP v1.0（旧版）》</b><div class="d-sub"><span>SOP</span><span>已被 v2.0 替换，向量已下线</span><span>正在引用的会话将收到"该制度已更新"提示</span></div></div>
+              <div class="d-badges"><span class="d-badge d-tag">D2 内部</span><span class="d-badge d-stale">已失效</span></div>
+              <div class="doc-ref" style="color:var(--faint)"><s>64</s></div>
+              <button class="mini-btn" onclick="toast('演示原型：旧版本保留 90 天供溯源','info')">溯源</button>
+            </div>
+          </div>
+          <div class="gap-card">
+            <div class="gap-head"><svg><use href="#i-warn"/></svg>知识缺口分析 —— "知识库未命中"高频问题（推荐科室管理员补充 FAQ）</div>
+            <div class="gap-body">
+              <div class="gap-item"><span class="gap-q">"促销返点怎么算？"</span><span class="gap-n">近 30 天 17 次</span></div>
+              <div class="gap-item"><span class="gap-q">"跨区调货流程是什么？"</span><span class="gap-n">近 30 天 9 次</span></div>
+              <div class="gap-item"><span class="gap-q">"样品单数量上限是多少？"</span><span class="gap-n">近 30 天 6 次</span></div>
+            </div>
+          </div>
+          <div class="pv-note"><svg><use href="#i-shield"/></svg>RAG 注入约束：单次注入 ≤ 800 Token（业务工具上下文优先）· 向量相似度 &lt; 0.75 不注入（回复"知识库未找到，建议咨询 XX"）· D4 机密不入 RAG · 知识问答走纯 RAG 流，不调业务系统 · 每条回答必附来源文档名 + 章节。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 页面视图：自动化任务（PRD 3.6） ================= -->
+    <section class="page-view" id="page-auto">
+      <div class="pv-scroll">
+        <div class="pv-inner">
+          <div class="pv-head">
+            <div class="pv-ico ico-amber"><svg><use href="#i-zap"/></svg></div>
+            <div class="pv-title"><b>自动化任务</b><span>先跑通，再自动化 —— 任务以创建者本人身份执行，权限随人走</span></div>
+            <div class="pv-actions">
+              <button class="btn btn-ghost" onclick="openTpl()"><svg><use href="#i-grid"/></svg>模板库</button>
+              <button class="btn btn-primary" onclick="openAuto()"><svg><use href="#i-plus"/></svg>新建任务</button>
+            </div>
+          </div>
+          <div class="guard-bar"><svg><use href="#i-shield"/></svg><span><b>防护栏：</b>自动化任务仅允许 Ask / Plan 模式（禁止 Craft，无人值守绝不写入）· 单任务间隔 ≥ 15 分钟 · 最长执行 30 分钟超时终止并通知 · 单用户并发 ≤ 3 · 失败不自动重试，连续 3 次失败自动暂停并通知创建者。</span></div>
+
+          <div class="auto-card">
+            <div class="auto-top">
+              <div class="auto-ico ci-skill-green"><svg><use href="#i-chart"/></svg></div>
+              <div class="auto-main">
+                <b>每日销售早报 <span class="d-badge d-tag">auto_001234</span></b>
+                <div class="a-sub"><span>技能 <span class="hlk">bi_query</span>（Ask）</span><span>调度：工作日 08:30（跳过法定节假日）</span><span>推送：企微机器人 + Chat-Work 会话</span></div>
+              </div>
+              <div class="auto-state">
+                <span class="state-pill st-run"><svg style="width:10px;height:10px"><use href="#i-play"/></svg>运行中</span>
+                <div class="switch on" onclick="toggleAuto(this,'每日销售早报')"></div>
+              </div>
+            </div>
+            <div class="auto-next"><span>下次执行 <b>明天（周二）08:30</b></span><span>生效区间 2026-10-01 起长期</span><span>本月成功 <b>12/12</b></span></div>
+            <div class="auto-result">最近一次（今天 08:30 · 成功 · 耗时 42s · 18.2K tokens）：<b>昨日销售额 ¥1.12M</b> · Top5 客户（华强电子 ¥0.31M…）· 待审批 3 条，已推送企微群与本人会话。</div>
+          </div>
+
+          <div class="auto-card">
+            <div class="auto-top">
+              <div class="auto-ico ci-skill-amber"><svg><use href="#i-clock"/></svg></div>
+              <div class="auto-main">
+                <b>审批超时提醒 <span class="d-badge d-tag">auto_000981</span></b>
+                <div class="a-sub"><span>技能 <span class="hlk">oa_todo_approve</span>（Ask）</span><span>调度：每天 18:00</span><span>推送：Chat-Work 会话</span></div>
+              </div>
+              <div class="auto-state">
+                <span class="state-pill st-run"><svg style="width:10px;height:10px"><use href="#i-play"/></svg>运行中</span>
+                <div class="switch on" onclick="toggleAuto(this,'审批超时提醒')"></div>
+              </div>
+            </div>
+            <div class="auto-next"><span>下次执行 <b>今天 18:00</b></span><span>规则：待办超 24h 未处理主动提醒</span></div>
+            <div class="auto-result">最近一次（昨天 18:00 · 成功 · 6s · 2.1K tokens）：2 条超 24h 待办已提醒（请购单 PR-0842 等）。</div>
+          </div>
+
+          <div class="auto-card">
+            <div class="auto-top">
+              <div class="auto-ico" style="background:var(--red-soft);color:var(--red)"><svg><use href="#i-warn"/></svg></div>
+              <div class="auto-main">
+                <b>库存预警监控 <span class="d-badge d-tag">auto_000772</span></b>
+                <div class="a-sub"><span>技能 <span class="hlk">wms_stock_alert</span>（事件触发：库存 &lt; 安全阈值）</span><span>推送：企微机器人</span></div>
+              </div>
+              <div class="auto-state">
+                <span class="state-pill st-pause"><svg style="width:10px;height:10px"><use href="#i-pause"/></svg>已暂停</span>
+                <div class="switch" onclick="toggleAuto(this,'库存预警监控')"></div>
+              </div>
+            </div>
+            <div class="auto-result" style="background:var(--red-soft);color:#7f1d1d"><b>连续 3 次失败自动暂停</b>（09-14 15:02 · WMS 接口超时，超时 30 分钟终止）—— 已通知创建者。恢复前请确认 WMS MCP Server 状态。</div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="mini-btn agree" onclick="resumeAuto(this)"><svg style="width:11px;height:11px"><use href="#i-refresh"/></svg>恢复任务</button>
+              <button class="mini-btn" onclick="toast('演示原型：编辑调度 / 参数 / 推送渠道','info')">编辑</button>
+            </div>
+          </div>
+
+          <div class="auto-card">
+            <div class="auto-top">
+              <div class="auto-ico ci-skill-blue"><svg><use href="#i-plane"/></svg></div>
+              <div class="auto-main">
+                <b>合同到期提醒 <span class="d-badge d-tag">模板 · 未启用</span></b>
+                <div class="a-sub"><span>技能 <span class="hlk">contract_reminder</span>（事件触发）</span><span>调度：每月 1/15 日 09:00（多天合一条规则）</span><span>模板：到期前 7/30 天</span></div>
+              </div>
+              <div class="auto-state">
+                <div class="switch" onclick="toggleAuto(this,'合同到期提醒')"></div>
+              </div>
+            </div>
+            <div class="auto-result">模板说明：从模板库一键创建，只需改参数（提前天数 / 收件人），无需从零配置。</div>
+          </div>
+
+          <div class="hist-card">
+            <div class="hist-head"><svg><use href="#i-clock"/></svg>执行历史</div>
+            <div class="hist-row"><span class="hist-time">09-15 08:30</span><span class="hist-name">每日销售早报</span><div class="hist-meta"><span class="rr-badge rb-green">成功</span><span>42s</span><span>18.2K tokens</span><span>已推送企微</span></div></div>
+            <div class="hist-row"><span class="hist-time">09-14 18:00</span><span class="hist-name">审批超时提醒</span><div class="hist-meta"><span class="rr-badge rb-green">成功</span><span>6s</span><span>2.1K tokens</span></div></div>
+            <div class="hist-row"><span class="hist-time">09-14 15:02</span><span class="hist-name">库存预警监控</span><div class="hist-meta"><span class="rr-badge" style="background:var(--red-soft);color:var(--red)">失败 · 超时终止</span><span>30min</span><span>计入失败 3/3 → 自动暂停</span></div></div>
+            <div class="hist-row"><span class="hist-time">09-14 08:30</span><span class="hist-name">每日销售早报</span><div class="hist-meta"><span class="rr-badge rb-green">成功</span><span>39s</span><span>17.8K tokens</span></div></div>
+          </div>
+          <div class="pv-note"><svg><use href="#i-info"/></svg>执行身份：任务以创建者本人身份执行，权限随人走；调岗/权限变更后下次执行自动按新权限收敛，离职后个人任务自动停用。参数支持从知识库引用（如周报模板、简报结构），模板更新即全量生效。也可在会话中用自然语言管理："把早报改成 9 点发"、"暂停库存提醒"、"这个月结束就停掉"。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 页面视图：我的记忆（PRD 9.1-9.3） ================= -->
+    <section class="page-view" id="page-memory">
+      <div class="pv-scroll">
+        <div class="pv-inner">
+          <div class="pv-head">
+            <div class="pv-ico ico-blue"><svg><use href="#i-brain"/></svg></div>
+            <div class="pv-title"><b>管理我的记忆</b><span>你随时可以查看 Agent 记住了什么 —— 纠错、删除、一键清除（PIPL 知情同意）</span></div>
+          </div>
+
+          <div class="mem-layers">
+            <div class="ml-card"><b>L1 <span class="lvl">会话记忆</span></b><span>当前对话上下文 · 每轮自动写入 · 7 天 TTL 自动过期</span></div>
+            <div class="ml-card cur"><b>L2 <span class="lvl">个人记忆</span></b><span>操作习惯 · 常用参数 · 偏好 —— 本页可查看 / 纠错 / 删除</span></div>
+            <div class="ml-card"><b>L3 <span class="lvl">组织记忆</span></b><span>科室高频问法 · 报表模板 —— 由科室管理员提炼并审核</span></div>
+          </div>
+
+          <div class="consent-card">
+            <svg><use href="#i-shield"/></svg>
+            <div class="cc-main">
+              <b>个人记忆已启用</b>
+              <span>你于 2026-09-01 明确同意启用（PIPL 知情同意）。关闭后仅保留 L1 会话记忆（7 天自动过期），核心功能不受影响；已沉淀的个人记忆将停止引用并可清除。</span>
+            </div>
+            <div class="switch on" onclick="toggleMemConsent(this)"></div>
+          </div>
+
+          <div class="card" id="memList">
+            <div class="card-head">
+              <div class="c-ico ico-blue"><svg><use href="#i-brain"/></svg></div>
+              <div class="c-title"><b>个人记忆 · 4 条</b><span>来源分「自动沉淀」与「明确指令」；引用中的记忆在会话右侧面板可见</span></div>
+            </div>
+            <div class="mem-row">
+              <span class="mem-type mt-param">常用客户</span>
+              <div class="mem-content">深圳华强电子有限公司（事业部A · 月结客户）<div class="m-sub"><span>来源：自动沉淀（同一报表连续多次查询）</span><span>本月引用 6 次</span><span>09-14 更新</span></div></div>
+              <button class="mini-btn reject" onclick="delMemory(this,'常用客户：深圳华强电子')"><svg style="width:11px;height:11px"><use href="#i-trash"/></svg>删除</button>
+            </div>
+            <div class="mem-row">
+              <span class="mem-type mt-pref">偏好</span>
+              <div class="mem-content">报表按产品线维度展示 · 导出格式 xlsx<div class="m-sub"><span>来源：自动沉淀（行为偏好）</span><span>引用 12 次</span><span>09-12 更新</span></div></div>
+              <button class="mini-btn reject" onclick="delMemory(this,'偏好：报表按产品线 · xlsx')"><svg style="width:11px;height:11px"><use href="#i-trash"/></svg>删除</button>
+            </div>
+            <div class="mem-row">
+              <span class="mem-type mt-habit">习惯</span>
+              <div class="mem-content">交货日期偏好周四<div class="m-sub"><span>来源：明确指令"记住交货日期都用周四"</span><span>引用 3 次</span><span>09-10 更新</span></div></div>
+              <button class="mini-btn reject" onclick="delMemory(this,'习惯：交货日期偏好周四')"><svg style="width:11px;height:11px"><use href="#i-trash"/></svg>删除</button>
+            </div>
+            <div class="mem-row">
+              <span class="mem-type mt-param">常用参数</span>
+              <div class="mem-content">默认查询区域：华东<div class="m-sub"><span>来源：自动沉淀（参数提取阶段注入默认值）</span><span>引用 9 次</span><span>09-08 更新</span></div></div>
+              <button class="mini-btn reject" onclick="delMemory(this,'常用参数：默认区域华东')"><svg style="width:11px;height:11px"><use href="#i-trash"/></svg>删除</button>
+            </div>
+          </div>
+
+          <div class="pv-note"><svg><use href="#i-warn"/></svg>敏感隔离：工资、合同金额、客户联系方式等 D3 级敏感字段不进入记忆层 · 个人记忆默认不跨科室共享 · 超过 90 天未引用自动降权，180 天归档 · 离职后个人记忆自动清除。</div>
+
+          <div class="danger-zone">
+            <div class="dz-head"><svg><use href="#i-warn"/></svg>危险区</div>
+            <div class="dz-row">
+              <span>清除全部个人记忆（不可恢复，会话记忆不受影响）</span>
+              <button class="mini-btn reject" onclick="wipeMemory(this)"><svg style="width:11px;height:11px"><use href="#i-trash"/></svg>清除全部</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 页面视图：设置（PRD 5.1 A-03 / 8.5 / 9.2） ================= -->
+    <section class="page-view" id="page-settings">
+      <div class="pv-scroll">
+        <div class="pv-inner set-grid">
+          <div class="set-nav">
+            <div class="sn-item active" onclick="setNav(this,'sc-profile')"><svg style="color:var(--primary)"><use href="#i-user"/></svg>个人档案</div>
+            <div class="sn-item" onclick="setNav(this,'sc-exec')"><svg style="color:var(--amber)"><use href="#i-zap"/></svg>执行偏好</div>
+            <div class="sn-item" onclick="setNav(this,'sc-notify')"><svg style="color:var(--green)"><use href="#i-bell"/></svg>通知</div>
+            <div class="sn-item" onclick="setNav(this,'sc-mem')"><svg style="color:#71798c"><use href="#i-brain"/></svg>记忆与知识</div>
+            <div class="sn-item" onclick="setNav(this,'sc-sec')"><svg style="color:var(--red)"><use href="#i-shield"/></svg>安全</div>
+          </div>
+          <div class="set-body">
+            <div class="set-card" id="sc-profile">
+              <div class="set-card-head"><svg><use href="#i-user"/></svg>个人档案</div>
+              <div class="profile-hero">
+                <div class="avatar">张</div>
+                <div class="ph-main">
+                  <b>张明</b>
+                  <div class="p-sub">EMP002345 · 事业部A / 销售科 · 普通员工（+ 科室技能创建者）· HR 主数据同步</div>
+                  <div><span class="sys-badge sb-rw"><svg style="width:10px;height:10px"><use href="#i-check"/></svg>OA · 销售单据读写</span><span class="sys-badge sb-ro">BI · 事业部A报表只读</span><span class="sys-badge sb-push">企微 · 消息推送</span></div>
+                </div>
+              </div>
+              <div class="set-row"><span class="sr-label">登录方式</span><div class="sr-main"><b>AD 域账号（OIDC + PKCE）</b><span class="sr-sub">今天 09:12 登录 · 会话有效期至 17:12（跟随工作会话）· Identity Broker：Keycloak</span></div></div>
+              <div class="set-row"><span class="sr-label">权限范围</span><div class="sr-main">OA 销售单据读写 · BI 事业部A报表只读 · 数据范围：本人 → 销售科汇总<span class="sr-sub">区域（华东/华南…）、产品线、客户归属独立校验，任一不满足即拒绝</span></div></div>
+              <div class="set-row"><span class="sr-label">权限版本</span><div class="sr-main"><code style="font-family:ui-monospace,Consolas,monospace;font-size:11.5px;background:var(--line-soft);border-radius:5px;padding:2px 7px">perm_ver 17</code><span class="sr-sub">权限变更后由管理员触发版本递增，缓存 TTL 5 分钟自动失效</span></div></div>
+              <div class="set-row"><span class="sr-label">我的技能</span><div class="sr-main">已安装 5 个：销售订单录入 / 待办审批 / BI 数据查询 / 请购单录入（今日新增）/ 工作周报生成</div><button class="mini-btn" onclick="switchView('market')">前往市场</button></div>
+            </div>
+
+            <div class="set-card" id="sc-exec">
+              <div class="set-card-head"><svg><use href="#i-zap"/></svg>执行偏好</div>
+              <div class="set-row"><span class="sr-label">默认执行模式</span>
+                <div class="sr-main"><div class="radio-chips">
+                  <button class="radio-chip" onclick="setPrefMode(this,'ask')">只问不写</button>
+                  <button class="radio-chip" onclick="setPrefMode(this,'plan')">先计划后执行</button>
+                  <button class="radio-chip active" onclick="setPrefMode(this,'craft')">直接执行</button>
+                </div><span class="sr-sub">会话输入区可临时切换；写入操作无论什么模式都强制确认卡</span></div>
+              </div>
+              <div class="set-row"><span class="sr-label">写入确认卡（HITL）</span><div class="sr-main">始终开启<span class="sr-sub">审批 / 财务 / 库存 / 人事 / 法务类关键动作必须人工二次确认（PRD 10.1）</span></div><div class="switch on lock" onclick="toast('安全要求：HITL 确认卡不可关闭','warn')"></div></div>
+              <div class="set-row"><span class="sr-label">幂等保护</span><div class="sr-main">开启<span class="sr-sub">写入类操作生成幂等键，24 小时内防重复提交（PRD 8.7）</span></div><div class="switch on lock" onclick="toast('安全要求：幂等保护不可关闭','warn')"></div></div>
+              <div class="set-row"><span class="sr-label">附件本地工具</span><div class="sr-main">桌面端 local__* MCP 文件工具<span class="sr-sub">仅桌面会话可见，Web 会话不加载；服务端自动化任务不可调用本地工具</span></div><button class="mini-btn" onclick="toast('演示原型：打开桌面客户端下载页（Electron · 灰度更新）','info')">获取桌面端</button></div>
+            </div>
+
+            <div class="set-card" id="sc-notify">
+              <div class="set-card-head"><svg><use href="#i-bell"/></svg>通知</div>
+              <div class="set-row"><span class="sr-label">审批待办提醒</span><div class="sr-main">待办超 24h 主动提醒（自动化任务兜底）</div><div class="switch on" onclick="toggleSwitch(this,'审批待办提醒')"></div></div>
+              <div class="set-row"><span class="sr-label">自动化结果推送</span><div class="sr-main">任务成功/失败推送至企微机器人 + 会话</div><div class="switch on" onclick="toggleSwitch(this,'自动化结果推送')"></div></div>
+              <div class="set-row"><span class="sr-label">知识库周报</span><div class="sr-main">本周知识引用 / 命中统计摘要</div><div class="switch" onclick="toggleSwitch(this,'知识库周报')"></div></div>
+              <div class="set-row"><span class="sr-label">技能更新提醒</span><div class="sr-main">已安装技能发布新版本时提醒（破坏性变更需二次确认）</div><div class="switch on" onclick="toggleSwitch(this,'技能更新提醒')"></div></div>
+            </div>
+
+            <div class="set-card" id="sc-mem">
+              <div class="set-card-head"><svg><use href="#i-brain"/></svg>记忆与知识</div>
+              <div class="set-row"><span class="sr-label">个人记忆（L2）</span><div class="sr-main">偏好 / 常用参数 / 习惯 自动沉淀，可查看与删除</div><div class="switch on" onclick="toggleMemConsent(this)"></div></div>
+              <div class="set-row"><span class="sr-label">知识引用显示来源</span><div class="sr-main">回答引用知识库时必附文档名 + 章节<span class="sr-sub">合规要求，不可关闭（杜绝"无出处的知识"）</span></div><div class="switch on lock" onclick="toast('合规要求：知识引用来源不可关闭','warn')"></div></div>
+              <div class="set-row"><span class="sr-label">注入上限</span><div class="sr-main">记忆 ≤ 500 Token · 知识 ≤ 800 Token<span class="sr-sub">业务工具上下文优先，避免挤占任务上下文</span></div><button class="mini-btn" onclick="switchView('memory')">管理记忆</button></div>
+              <div class="set-row"><span class="sr-label">知识库</span><div class="sr-main">集团知识库 + 销售科知识空间 · 按密级（D1-D3）自动过滤</div><button class="mini-btn" onclick="switchView('kb')">进入知识库</button></div>
+            </div>
+
+            <div class="set-card" id="sc-sec">
+              <div class="set-card-head"><svg><use href="#i-shield"/></svg>安全</div>
+              <div class="set-row"><span class="sr-label">审计日志</span><div class="sr-main">本人在 Agent 中的每次系统操作均留痕（用户 / 时间 / 动作 / 参数摘要 / 结果）<span class="sr-sub">留存 ≥ 180 天 · 法务科可一键导出指定时间段完整轨迹</span></div><button class="mini-btn" onclick="toast('演示原型：打开审计日志 —— 今日 12 条（录单 1 · 审批 3 · 查询 8）','info')">查看</button></div>
+              <div class="set-row"><span class="sr-label">活跃会话</span><div class="sr-main"><b>桌面客户端</b>（在线 · local__* 可用）· <b>Web</b>（当前）<span class="sr-sub">access_token 30 分钟静默刷新 · refresh_token 8 小时轮换（旋转复用检测）</span></div><button class="mini-btn" onclick="toast('演示原型：其他会话已退出，仅保留当前 Web 会话','ok')">退出其他会话</button></div>
+              <div class="set-row"><span class="sr-label">数据分级展示</span><div class="sr-main">D1 公开 · D2 内部 · D3 敏感（自动脱敏，如 138****5678）· D4 机密不接入<span class="sr-sub">导出文件自动添加个人信息水印</span></div></div>
+              <div class="set-row"><span class="sr-label">退出登录</span><div class="sr-main">销毁当前会话（HttpOnly Cookie 失效），返回登录页</div><button class="mini-btn reject" onclick="logout()"><svg style="width:11px;height:11px"><use href="#i-out"/></svg>退出</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== 右侧上下文面板 ===== -->
-    <aside class="ctx">
+    <aside class="ctx" id="ctxPanel">
       <div class="ctx-card">
         <div class="ctx-head"><svg style="color:#4f46e5"><use href="#i-zap"/></svg>会话上下文</div>
         <div class="ctx-body">
@@ -802,7 +1867,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
           <div class="mem-item"><svg><use href="#i-user"/></svg><span class="mi-t"><b>常用客户</b>：深圳华强电子（本月第 6 次）</span></div>
           <div class="mem-item"><svg><use href="#i-chart"/></svg><span class="mi-t"><b>偏好</b>：报表按产品线维度 · 导出 xlsx</span></div>
           <div class="mem-item"><svg><use href="#i-clock"/></svg><span class="mi-t"><b>习惯</b>：交货日期偏好周四</span></div>
-          <div class="ctx-link" onclick="toast('演示原型：管理个人记忆（查看/纠错/删除）','info')">管理我的记忆<svg><use href="#i-chev"/></svg></div>
+          <div class="ctx-link" onclick="switchView('memory')">管理我的记忆<svg><use href="#i-chev"/></svg></div>
         </div>
       </div>
       <div class="ctx-card">
@@ -810,9 +1875,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
         <div class="ctx-body">
           <div class="quick-grid">
             <button class="qk-btn" onclick="toast('演示原型：发起请购单录入（oa_purchase_request）','info')"><svg><use href="#i-cart"/></svg>录请购单</button>
-            <button class="qk-btn" onclick="toast('演示原型：查询库存（Phase 2 WMS 技能）','warn')"><svg><use href="#i-grid"/></svg>查库存</button>
-            <button class="qk-btn" onclick="toast('演示原型：生成本周工作周报草稿（weekly_report）','info')"><svg><use href="#i-book"/></svg>生成周报</button>
-            <button class="qk-btn" onclick="toast('演示原型：创建自动化任务（Phase 2）','warn')"><svg><use href="#i-zap"/></svg>自动化</button>
+            <button class="qk-btn" onclick="switchView('market')"><svg><use href="#i-grid"/></svg>查库存</button>
+            <button class="qk-btn" onclick="toast('演示原型：生成本周工作周报草稿（weekly_report · Plan 模式）','info')"><svg><use href="#i-book"/></svg>生成周报</button>
+            <button class="qk-btn" onclick="switchView('auto')"><svg><use href="#i-zap"/></svg>自动化</button>
           </div>
         </div>
       </div>
@@ -831,6 +1896,447 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   </div>
 </div>
 
+<!-- ================= 单据工作台（完整单据 · 主/子/孙三级） ================= -->
+<div class="wb-mask" id="docMask">
+  <div class="doc-wb" id="docWb">
+    <div class="wb-head">
+      <div class="c-ico ico-blue"><svg><use href="#i-grid"/></svg></div>
+      <div class="wb-head-main">
+        <b>ERP 销售订单 · ERP-SO-20260916-0412 <span style="color:var(--amber);font-size:11.5px">草稿 v2 · 2 处异常</span></b>
+        <span>完整单据视图（审计级）· 对话摘要卡与此处状态实时同步 · 支持双轨编辑（表格点选修改回写对话）</span>
+      </div>
+      <span class="spacer"></span>
+      <button class="mini-btn" id="wbErrBtn" onclick="wbErrOnly(this)">仅看异常行</button>
+      <button class="mini-btn" onclick="closeDoc()">关闭</button>
+    </div>
+    <div class="wb-body">
+      <div class="wb-sec-head"><svg><use href="#i-file"/></svg>主表 <span class="wb-count">86 字段 · 分 8 组 · 关键 16 项展示中（其余 70 项自动带出，点右侧查看审计视图）</span><span class="spacer"></span><button class="mini-btn" onclick="toast('演示原型：展开全部 86 字段（审计视图）—— 分组折叠面板，非录入必看项','info')">查看全部 86 字段</button></div>
+      <div class="wb-groups">
+        <div class="wb-group">
+          <h5><svg><use href="#i-shield"/></svg>基本信息</h5>
+          <div class="form-rows">
+            <div class="form-row"><div class="f-label">客户名称<span class="req">*</span></div><div class="f-value">深圳华强电子有限公司（事业部A）</div><span class="f-tag t-sys">系统匹配</span></div>
+            <div class="form-row"><div class="f-label">订单类型</div><div class="f-value">标准销售订单 · CNY · 汇率 1.0000</div><span class="f-tag t-def">默认值</span></div>
+            <div class="form-row"><div class="f-label">销售组织</div><div class="f-value">事业部A · 销售科</div><span class="f-tag t-sys">HR 主数据</span></div>
+            <div class="form-row"><div class="f-label">业务员</div><div class="f-value">张明（EMP002345）</div><span class="f-tag t-sys">HR 主数据</span></div>
+          </div>
+        </div>
+        <div class="wb-group">
+          <h5><svg><use href="#i-coin"/></svg>价格条款</h5>
+          <div class="form-rows">
+            <div class="form-row"><div class="f-label">付款条件</div><div class="f-value">月结 30 天</div><span class="f-tag t-def">客户默认</span></div>
+            <div class="form-row"><div class="f-label">税率</div><div class="f-value">13%（价内税）</div><span class="f-tag t-def">默认值</span></div>
+            <div class="form-row"><div class="f-label">价格清单</div><div class="f-value">2026-09 渠道协议价</div><span class="f-tag t-sys">系统带出</span></div>
+            <div class="form-row"><div class="f-label">整单折扣</div><div class="f-value">无</div><span class="f-tag t-def">默认值</span></div>
+          </div>
+        </div>
+        <div class="wb-group">
+          <h5><svg><use href="#i-cart"/></svg>物流</h5>
+          <div class="form-rows">
+            <div class="form-row"><div class="f-label">收货地址</div><div class="f-value" style="font-size:12.5px;color:var(--muted)">广东省深圳市福田区华强北路 88 号华强电子世界 3 期 6 楼</div><span class="f-tag t-def">客户默认</span></div>
+            <div class="form-row"><div class="f-label">运输方式</div><div class="f-value">公路 · 整车</div><span class="f-tag t-def">默认值</span></div>
+            <div class="form-row"><div class="f-label">交货地点</div><div class="f-value">客户收货仓</div><span class="f-tag t-def">默认值</span></div>
+            <div class="form-row"><div class="f-label">联系人</div><div class="f-value">陈小姐 · 0755-83****89 <span style="font-size:10.5px;color:var(--faint)">（D3 脱敏）</span></div><span class="f-tag t-sys">客户主数据</span></div>
+          </div>
+        </div>
+        <div class="wb-group">
+          <h5><svg><use href="#i-edit"/></svg>其他</h5>
+          <div class="form-rows">
+            <div class="form-row"><div class="f-label">订单备注</div><div class="f-value">备件按 2026-08-18 订单配置</div><span class="f-tag t-mem">L2 记忆恢复</span></div>
+            <div class="form-row"><div class="f-label">客户 PO 号</div><div class="f-value">PO-HQ-26092</div><span class="f-tag t-ask">对话获得</span></div>
+            <div class="form-row"><div class="f-label">附件</div><div class="f-value">无</div><span class="f-tag t-def">—</span></div>
+            <div class="form-row"><div class="f-label">生效类型</div><div class="f-value">立即生效</div><span class="f-tag t-def">默认值</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wb-sec-head"><svg><use href="#i-grid"/></svg>子表 <span class="wb-count">12 行 · 3 物料组 · 13 处变更已应用（数量 1 · 交货 12）· 点击行展开孙表（批次）</span></div>
+      <div class="sub-table">
+        <div class="sub-hd"><div>#</div><div>物料（编码 · 名称 · 规格）</div><div>数量</div><div>单价</div><div>金额</div><div>交货</div><div>状态</div></div>
+        <div class="sub-tr" onclick="toggleSub(this)">
+          <div>1</div>
+          <div class="sub-name"><b>5G 通信模块 · 标准版</b><span class="sub-code">SP-1024 · FR4 · 100×80mm</span></div>
+          <div class="sub-qty"><b>5,000</b><span>件</span></div>
+          <div class="sub-price">¥128.00<span> /件</span></div>
+          <div class="sub-amt"><span class="money">¥640,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+          <div class="grand">
+            <div class="grand-title"><svg><use href="#i-db"/></svg>孙表 · 批次分配（3 批 · 懒加载）</div>
+            <div class="grand-grid">
+              <div class="g-cell">批次<b>LOT-20260812-01</b>数量 2,400 件 · 东区仓 A-12</div>
+              <div class="g-cell">批次<b>LOT-20260902-02</b>数量 1,800 件 · 东区仓 A-13</div>
+              <div class="g-cell">批次<b>LOT-20260920-03</b>数量 800 件 · 在途 ETA 10-12</div>
+            </div>
+          </div>
+        </div>
+        <div class="sub-tr">
+          <div>2</div>
+          <div class="sub-name"><b>5G 通信模块 · 超宽版</b><span class="sub-code">SP-1024W · FR4 · 160×120mm</span></div>
+          <div class="sub-qty"><b>2,000</b><span>件</span></div>
+          <div class="sub-price">¥156.00<span> /件</span></div>
+          <div class="sub-amt"><span class="money">¥312,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr">
+          <div>3</div>
+          <div class="sub-name"><b>备件包 A · 天线套装</b><span class="sub-code">SP-2016 · 3.0m 馈线</span></div>
+          <div class="sub-qty"><b>3,000</b><span class="d-new" style="font-size:10.5px">改自 2,000</span></div>
+          <div class="sub-price">¥62.00<span> /套</span></div>
+          <div class="sub-amt"><span class="money">¥186,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr err">
+          <div>4</div>
+          <div class="sub-name"><b>备件包 B · 电源模块</b><span class="sub-code">SP-2017 · 12V/3A</span></div>
+          <div class="sub-qty"><b>1,500</b><span>个</span></div>
+          <div class="sub-price">¥92.00<span> /个</span></div>
+          <div class="sub-amt"><span class="money">¥138,000</span><span class="warn-price">⚠ 协议价 ¥85.00</span></div>
+          <div class="sub-date">10-17</div>
+          <div style="color:var(--amber)">⚠</div>
+        </div>
+        <div class="sub-tr">
+          <div>5</div>
+          <div class="sub-name"><b>备件包 C · 散热组件</b><span class="sub-code">SP-2018 · 铝鳍片</span></div>
+          <div class="sub-qty"><b>4,000</b><span>个</span></div>
+          <div class="sub-price">¥18.50<span> /个</span></div>
+          <div class="sub-amt"><span class="money">¥74,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr">
+          <div>6</div>
+          <div class="sub-name"><b>备件包 D · 连接器套装</b><span class="sub-code">SP-2019 · SMA-K</span></div>
+          <div class="sub-qty"><b>8,000</b><span>个</span></div>
+          <div class="sub-price">¥9.20<span> /个</span></div>
+          <div class="sub-amt"><span class="money">¥73,600</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr">
+          <div>7</div>
+          <div class="sub-name"><b>备件包 E · 线缆套装</b><span class="sub-code">SP-2020 · RG316</span></div>
+          <div class="sub-qty"><b>6,000</b><span>条</span></div>
+          <div class="sub-price">¥12.80<span> /条</span></div>
+          <div class="sub-amt"><span class="money">¥76,800</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr">
+          <div>8</div>
+          <div class="sub-name"><b>备件包 F · 固定支架</b><span class="sub-code">SP-2021 · 镀锌</span></div>
+          <div class="sub-qty"><b>10,000</b><span>个</span></div>
+          <div class="sub-price">¥6.50<span> /个</span></div>
+          <div class="sub-amt"><span class="money">¥65,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr err" onclick="toggleSub(this)">
+          <div>9</div>
+          <div class="sub-name"><b>备件包 G · 测试治具</b><span class="sub-code">SP-2022 · 工装</span></div>
+          <div class="sub-qty"><b>400</b><span>套</span></div>
+          <div class="sub-price">¥245.00<span> /套</span></div>
+          <div class="sub-amt"><span class="money">¥98,000</span><span class="warn-price">⚠ 批期 10-23 晚于交期</span></div>
+          <div class="sub-date">10-17</div>
+          <div style="color:var(--amber)">⚠</div>
+          <div class="grand">
+            <div class="grand-title"><svg><use href="#i-db"/></svg>孙表 · 批次分配（风险来源：唯一可用批期晚于交货要求）</div>
+            <div class="grand-grid">
+              <div class="g-cell">批次<b>LOT-20261005-01</b>数量 400 套 · 在途 ETA <span style="color:var(--amber);font-weight:700">10-23</span></div>
+              <div class="g-cell">序列号策略<b>逐件序列号</b>入库时扫码绑定，出货留痕</div>
+              <div class="g-cell">建议<b>拆行走紧急采购</b>或与客户协商该行交期至 10-24</div>
+            </div>
+          </div>
+        </div>
+        <div class="sub-tr">
+          <div>10</div>
+          <div class="sub-name"><b>备件包 H · 标签耗材</b><span class="sub-code">SP-2023 · 防静电</span></div>
+          <div class="sub-qty"><b>20,000</b><span>张</span></div>
+          <div class="sub-price">¥0.85<span> /张</span></div>
+          <div class="sub-amt"><span class="money">¥17,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr">
+          <div>11</div>
+          <div class="sub-name"><b>备件包 I · 防静电包材</b><span class="sub-code">SP-2024 · 屏蔽袋</span></div>
+          <div class="sub-qty"><b>5,000</b><span>套</span></div>
+          <div class="sub-price">¥8.60<span> /套</span></div>
+          <div class="sub-amt"><span class="money">¥43,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+        <div class="sub-tr">
+          <div>12</div>
+          <div class="sub-name"><b>软件授权 · 年</b><span class="sub-code">SP-2025 · 远程诊断</span></div>
+          <div class="sub-qty"><b>200</b><span>个</span></div>
+          <div class="sub-price">¥260.00<span> /个</span></div>
+          <div class="sub-amt"><span class="money">¥52,000</span></div>
+          <div class="sub-date">10-17</div>
+          <div class="ok">✓</div>
+        </div>
+      </div>
+    </div>
+    <div class="wb-foot">
+      <span class="ft-total">合计（含税）<span class="money">¥1,775,400</span> · 13 处变更已应用 · 大额阈值（≥100 万）已触发</span>
+      <span class="wb-virnote"><svg><use href="#i-zap"/></svg>工程约束：子表虚拟滚动（上万行不卡）· 孙表点开懒加载 · 行级校验异步批注</span>
+      <button class="btn btn-primary" style="margin-left:8px" onclick="erpSubmit(this)"><svg><use href="#i-check"/></svg>异常已知晓 · 确认提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 技能市场 · 上架向导（科室管理员提交 → 信息科安全评审 → 发布） ================= -->
+<div class="wb-mask" id="pubMask">
+  <div class="pub-wb" id="pubWb">
+    <div class="wb-head">
+      <div class="c-ico ico-blue"><svg><use href="#i-upload"/></svg></div>
+      <div class="wb-head-main">
+        <b>上架技能 <span style="color:var(--faint);font-size:11px;font-weight:400">科室管理员提交 → 信息科安全评审 → 发布</span></b>
+        <span>技能市场 · Phase 2 · 当前身份：张明（销售科 · 科室管理员）</span>
+      </div>
+      <span class="spacer"></span>
+      <button class="mini-btn" onclick="closePub()">关闭</button>
+    </div>
+
+    <div class="pub-flowwrap">
+      <div class="pub-flow">
+        <div class="pf-step cur" id="pfs1"><div class="p-dot"><svg><use href="#i-edit"/></svg></div><span>1 · 填写信息</span></div>
+        <div class="pf-step" id="pfs2"><div class="p-dot"><svg><use href="#i-shield"/></svg></div><span>2 · 安全评审</span></div>
+        <div class="pf-step" id="pfs3"><div class="p-dot"><svg><use href="#i-check"/></svg></div><span>3 · 发布上架</span></div>
+      </div>
+    </div>
+
+    <!-- 态一：技能信息表单 -->
+    <div class="wb-body" id="pubForm">
+      <div class="pub-sec"><svg><use href="#i-file"/></svg>基本信息</div>
+      <div class="pf-grid">
+        <div class="pub-field" style="margin-bottom:0"><div class="pf-label">技能名称<span class="req">*</span></div><input class="pf-input" id="pubName" value="销售合同查询" placeholder="如：销售合同查询"></div>
+        <div class="pub-field" style="margin-bottom:0"><div class="pf-label">发布范围</div>
+          <div class="radio-chips">
+            <button class="radio-chip active" onclick="pubScope(this,'dept')">本科室共享</button>
+            <button class="radio-chip" onclick="pubScope(this,'company')">全公司</button>
+          </div>
+        </div>
+      </div>
+      <div class="pub-field" style="margin-top:12px"><div class="pf-label">一句话描述<span class="req">*</span></div><textarea class="pf-area" id="pubDesc">按客户 / 日期查询销售合同台账：状态、金额、到期与回款情况</textarea></div>
+
+      <div class="pub-sec"><svg><use href="#i-zap"/></svg>执行模式<span class="sub">决定确认卡形态与评审强度</span></div>
+      <div class="mode-chips" style="margin-bottom:12px">
+        <button class="mode-chip mc-ask active" onclick="pubMode(this,'ask')"><svg><use href="#i-shield"/></svg>只问不写</button>
+        <button class="mode-chip mc-plan" onclick="pubMode(this,'plan')"><svg><use href="#i-chart"/></svg>先计划后执行</button>
+        <button class="mode-chip mc-craft" onclick="pubMode(this,'craft')"><svg><use href="#i-zap"/></svg>直接执行</button>
+      </div>
+
+      <div class="pub-sec"><svg><use href="#i-shield"/></svg>调用工具与数据范围<span class="sub">评审依据 · 按实际使用勾选</span></div>
+      <div class="tool-row on" onclick="toggleTool(this)"><div class="tool-check"><svg><use href="#i-check"/></svg></div><div class="tool-name">crm__query_contract<span>CRM 合同台账查询</span></div><span class="tool-scope">销售科 · 近 180 天</span><span class="tool-rw r">只读</span></div>
+      <div class="tool-row" onclick="toggleTool(this)"><div class="tool-check"><svg><use href="#i-check"/></svg></div><div class="tool-name">crm__query_receivable<span>CRM 应收与回款查询</span></div><span class="tool-scope">销售科 · 全部</span><span class="tool-rw r">只读</span></div>
+      <div class="tool-row" onclick="toggleTool(this)"><div class="tool-check"><svg><use href="#i-check"/></svg></div><div class="tool-name">crm__update_contract_remark<span>CRM 合同备注更新</span></div><span class="tool-scope">本人跟进的合同</span><span class="tool-rw w">写入</span></div>
+      <div class="pub-warn"><svg><use href="#i-bell"/></svg><div><b>评审规则：</b>含「写入类工具」或申请扩大数据范围的技能，提交后进入信息科安全评审（≤2 个工作日）；纯只读 + Ask 模式走快审通道（≤4 小时）。</div></div>
+
+      <div class="pub-sec" style="margin-top:12px"><svg><use href="#i-spark"/></svg>示例问法<span class="sub">帮用户在市场检索与技能路由</span></div>
+      <div class="sk-chips" id="pubChips">
+        <span class="sk-chip">"查一下华强电子的合同"</span>
+        <span class="sk-chip">"本月有哪些合同没回款"</span>
+        <button class="sk-chip chip-add" onclick="pubChip(this)">+ 添加</button>
+      </div>
+    </div>
+
+    <!-- 态二：安全评审中 -->
+    <div class="wb-body" id="pubReview" style="display:none">
+      <div class="pub-sec"><svg><use href="#i-shield"/></svg>评审单 SEC-RV-20260916-007<span class="sub">已提交 · 2026-09-16 10:32</span></div>
+      <div class="review-box">
+        <div class="review-row"><span class="rk">技能 / 提交人</span><span class="rv"><b id="rvName">销售合同查询</b> · 张明（销售科 · 科室管理员）</span></div>
+        <div class="review-row"><span class="rk">触发规则</span><span class="rv" id="rvRule">—</span></div>
+        <div class="review-row"><span class="rk">评审方</span><span class="rv">信息科 · 安全组（工作日响应）</span></div>
+        <div class="review-row"><span class="rk">评审要点</span><span class="rv">写入工具影响面 · 数据范围最小化 · 是否强制 HITL 确认卡</span></div>
+        <div class="review-row"><span class="rk">当前状态</span><span class="rv" style="color:var(--amber);font-weight:600">⏳ 安全评审中 · 市场列表以「评审中」展示，不可安装</span></div>
+      </div>
+      <div class="pub-warn"><svg><use href="#i-bell"/></svg><div>评审结果将推送企微通知；<b>驳回</b>将附整改建议退回提交人，可在「我的技能」中查看整改记录并重新提交。</div></div>
+    </div>
+
+    <!-- 态三：发布成功 -->
+    <div class="wb-body" id="pubDone" style="display:none">
+      <div class="pub-done">
+        <div class="pd-ico"><svg><use href="#i-check"/></svg></div>
+        <h4 id="pubDoneName">「销售合同查询」已发布上架</h4>
+        <p>技能市场 · 科室技能（销售科）· v1.0.0<br>市场可检索、可安装；安装量与评分将在使用后开放统计</p>
+      </div>
+    </div>
+
+    <div class="wb-foot" id="pubFoot">
+      <span class="ft-total">提交后进入信息科安全评审 · 期间技能以「评审中」展示，不可安装</span>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" style="height:34px;padding:0 14px;font-size:12.5px" onclick="closePub()">取消</button>
+      <button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="pubSubmit(this)"><svg><use href="#i-send"/></svg>提交安全评审</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 自动化 · 模板库 ================= -->
+<div class="wb-mask" id="tplMask">
+  <div class="pub-wb" id="tplWb">
+    <div class="wb-head">
+      <div class="c-ico ico-blue"><svg><use href="#i-grid"/></svg></div>
+      <div class="wb-head-main">
+        <b>模板库 <span style="color:var(--faint);font-size:11px;font-weight:400">信息科沉淀的标准场景 · 选模板改参数即可</span></b>
+        <span>模板更新后，引用该模板的任务全量生效（PRD 3.6）</span>
+      </div>
+      <span class="spacer"></span>
+      <button class="mini-btn" onclick="closeTpl()">关闭</button>
+    </div>
+    <div class="wb-body">
+      <div class="tpl-grid">
+        <div class="tpl-card">
+          <div class="tpl-top"><div class="tpl-ico ci-skill-blue"><svg><use href="#i-chart"/></svg></div><div class="tpl-meta"><b>每日销售早报<span class="tused">已在用</span></b><span>昨日销售额 KPI · Top5 客户 · 待办提醒，工作日一图速览</span></div></div>
+          <div class="tpl-tags"><span>bi_query · Ask</span><span>工作日 08:30</span><span>企微 + 会话</span></div>
+          <div class="tpl-foot"><span class="tf-hint">来源：信息科官方</span><button class="mini-btn disabled" disabled>已在用</button></div>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-top"><div class="tpl-ico ci-skill-amber"><svg><use href="#i-file"/></svg></div><div class="tpl-meta"><b>工作周报</b><span>汇总本人操作 + 待办 + BI 摘要，生成周报草稿（Plan 模式）</span></div></div>
+          <div class="tpl-tags"><span>weekly_report · Plan</span><span>每周五 17:00</span><span>邮件 + 会话</span></div>
+          <div class="tpl-foot"><span class="tf-hint">来源：信息科官方</span><button class="mini-btn agree" onclick="useTpl('weekly')"><svg><use href="#i-plus"/></svg>使用模板</button></div>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-top"><div class="tpl-ico ci-skill-amber"><svg><use href="#i-clock"/></svg></div><div class="tpl-meta"><b>审批超时日报</b><span>聚合超 24h 未处理待办，每日汇总提醒发起人与审批人</span></div></div>
+          <div class="tpl-tags"><span>oa_todo_approve · Ask</span><span>每天 18:00</span><span>会话</span></div>
+          <div class="tpl-foot"><span class="tf-hint">来源：信息科官方</span><button class="mini-btn agree" onclick="useTpl('todo')"><svg><use href="#i-plus"/></svg>使用模板</button></div>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-top"><div class="tpl-ico ci-skill-red"><svg><use href="#i-warn"/></svg></div><div class="tpl-meta"><b>库存预警监控</b><span>物料低于安全阈值即触发预警，推送仓库与相关科室</span></div></div>
+          <div class="tpl-tags"><span>wms_stock_alert · Ask</span><span>事件触发</span><span>企微机器人</span></div>
+          <div class="tpl-foot"><span class="tf-hint">来源：仓库物流 · 科室</span><button class="mini-btn agree" onclick="useTpl('wms')"><svg><use href="#i-plus"/></svg>使用模板</button></div>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-top"><div class="tpl-ico ci-skill-blue"><svg><use href="#i-plane"/></svg></div><div class="tpl-meta"><b>合同到期提醒<span class="tused" style="background:var(--amber-soft);color:var(--amber)">列表已有</span></b><span>到期前 7/30 天生成提醒，多天合一条规则避免打扰</span></div></div>
+          <div class="tpl-tags"><span>contract_reminder · Ask</span><span>每月 1/15 日 09:00</span><span>企微机器人</span></div>
+          <div class="tpl-foot"><span class="tf-hint">来源：法务科 · 科室</span><button class="mini-btn agree" onclick="useTpl('contract')"><svg><use href="#i-plus"/></svg>使用模板</button></div>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-top"><div class="tpl-ico ci-skill-green"><svg><use href="#i-chart"/></svg></div><div class="tpl-meta"><b>月度经营简报</b><span>事业部 KPI 达成 · 环比 · Top 产品线，月初推送管理层</span></div></div>
+          <div class="tpl-tags"><span>bi_query · Ask</span><span>每月 1 日 09:00</span><span>邮件</span></div>
+          <div class="tpl-foot"><span class="tf-hint">来源：信息科官方</span><button class="mini-btn agree" onclick="useTpl('monthly')"><svg><use href="#i-plus"/></svg>使用模板</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 自动化 · 新建任务向导（会话转换 / 模板 / 空白 → 配置 → 试运行 → 启用） ================= -->
+<div class="wb-mask" id="autoMask">
+  <div class="pub-wb" id="autoWb">
+    <div class="wb-head">
+      <div class="c-ico ico-amber"><svg><use href="#i-zap"/></svg></div>
+      <div class="wb-head-main">
+        <b>新建自动化任务 <span style="color:var(--faint);font-size:11px;font-weight:400">先跑通，再自动化 · 参数自动带入</span></b>
+        <span>任务以创建者本人身份执行（权限随人走）· 仅允许 Ask / Plan 模式（防护栏）</span>
+      </div>
+      <span class="spacer"></span>
+      <button class="mini-btn" onclick="closeAuto()">关闭</button>
+    </div>
+
+    <div class="pub-flowwrap">
+      <div class="pub-flow">
+        <div class="pf-step cur" id="as1"><div class="p-dot"><svg><use href="#i-chat"/></svg></div><span>1 · 选择来源</span></div>
+        <div class="pf-step" id="as2"><div class="p-dot"><svg><use href="#i-edit"/></svg></div><span>2 · 配置任务</span></div>
+        <div class="pf-step" id="as3"><div class="p-dot"><svg><use href="#i-play"/></svg></div><span>3 · 试运行</span></div>
+        <div class="pf-step" id="as4"><div class="p-dot"><svg><use href="#i-check"/></svg></div><span>4 · 启用</span></div>
+      </div>
+    </div>
+
+    <!-- 视图1：来源 -->
+    <div class="wb-body" id="autoSrc">
+      <div class="pub-sec"><svg><use href="#i-spark"/></svg>任务来源<span class="sub">推荐：把已跑通的会话转为自动化，技能与参数自动带入</span></div>
+      <div class="src-cards">
+        <div class="src-card on" onclick="pickSrc(this,'conv')">
+          <div class="sc-ico"><svg><use href="#i-chat"/></svg></div>
+          <b>从会话转换<span class="sc-rec">推荐</span></b>
+          <p>将跑通的会话一键转为自动化任务，技能、参数与输出结构自动带入。</p>
+          <div class="sc-state">✓ 今天 09:42 · BI 数据查询 · 已跑通</div>
+        </div>
+        <div class="src-card" onclick="pickSrc(this,'tpl')">
+          <div class="sc-ico"><svg><use href="#i-grid"/></svg></div>
+          <b>从模板创建</b>
+          <p>使用信息科沉淀的标准场景模板，改参数即用。</p>
+          <div class="sc-state gray">6 个模板可选（2 个科室共享）</div>
+        </div>
+        <div class="src-card" onclick="pickSrc(this,'blank')">
+          <div class="sc-ico"><svg><use href="#i-plus"/></svg></div>
+          <b>空白新建</b>
+          <p>从零配置技能、调度与推送，适合个性化场景。</p>
+          <div class="sc-state gray">需手动选择技能与参数</div>
+        </div>
+      </div>
+      <div class="bring-box">
+        <div class="bb-title"><svg><use href="#i-download"/></svg>将带入以下内容（来自会话「BI 数据查询 · 今天 09:42」）</div>
+        <div class="review-box" style="margin-bottom:0">
+          <div class="review-row"><span class="rk">技能</span><span class="rv"><b>bi_query</b>（Ask · 只读 ✓ 符合无人值守防护栏）</span></div>
+          <div class="review-row"><span class="rk">带入参数</span><span class="rv">范围 = 本月销售额 · 维度 = 按产品线 · 事业部A（权限范围内）</span></div>
+          <div class="review-row"><span class="rk">上次输出</span><span class="rv">KPI 卡 + 产品线对比图（支持追加维度与导出）</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 视图2：配置 -->
+    <div class="wb-body" id="autoCfg" style="display:none">
+      <div class="pub-sec"><svg><use href="#i-file"/></svg>任务信息</div>
+      <div class="pub-field" style="margin-bottom:12px"><div class="pf-label">任务名称<span class="req">*</span></div><input class="pf-input" id="autoName" value="销售数据日报"></div>
+
+      <div class="pub-sec"><svg><use href="#i-clock"/></svg>调度规则<span class="sub">单任务间隔 ≥ 15 分钟 · 事件触发无需时间</span></div>
+      <div class="radio-chips" id="schedChips" style="margin-bottom:12px;align-items:center">
+        <button class="radio-chip" onclick="pickSched(this)">每天</button>
+        <button class="radio-chip active" onclick="pickSched(this)">工作日</button>
+        <button class="radio-chip" onclick="pickSched(this)">每周</button>
+        <button class="radio-chip" onclick="pickSched(this)">每月</button>
+        <button class="radio-chip" onclick="pickSched(this)">事件触发</button>
+        <input class="pf-input time-mini" id="autoTime" value="08:30" title="执行时间">
+      </div>
+
+      <div class="pub-sec"><svg><use href="#i-bell"/></svg>推送渠道<span class="sub">可多选 · 失败必推创建者</span></div>
+      <div class="radio-chips" id="chanChips" style="margin-bottom:12px">
+        <button class="radio-chip active" onclick="toggleChan(this)">企微机器人</button>
+        <button class="radio-chip active" onclick="toggleChan(this)">Chat-Work 会话</button>
+        <button class="radio-chip" onclick="toggleChan(this)">邮件</button>
+      </div>
+
+      <div class="pub-warn"><svg><use href="#i-shield"/></svg><div><b>防护栏（自动应用）：</b>执行模式锁定 Ask（只读，禁止 Craft）· 最长执行 30 分钟超时终止并通知 · 失败不自动重试，连续 3 次失败自动暂停并通知创建者。</div></div>
+    </div>
+
+    <!-- 视图3：试运行 -->
+    <div class="wb-body" id="autoRun" style="display:none">
+      <div class="pub-sec"><svg><use href="#i-play"/></svg>首次试运行结果<span class="sub">启用前需人工确认输出符合预期（HITL）</span></div>
+      <div class="try-box">
+        <div class="try-hd"><svg><use href="#i-check"/></svg>试运行成功<div class="try-meta">今天 10:41 · 耗时 38s · 12.4K tokens · Ask 只读</div></div>
+        <div class="try-body" id="tryBody">
+          <b>【<span id="tryName">销售数据日报</span> · 09-16】</b><br>
+          · 本月销售额 ¥1.12M（环比 +6.2%）<br>
+          · Top5 客户：华强电子 ¥0.31M / 蓝思科技 ¥0.18M / …<br>
+          · 按产品线：5G 模块 64% · 备件包 22% · 其他 14%<br>
+          · 待办审批 3 条（明细见会话卡片）
+          <div class="tb-note" id="tryNote">推送预览：将发送至 企微机器人 + Chat-Work 会话（你本人）· 输出结构与本次一致，数据每次执行自动更新</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 视图4：启用成功 -->
+    <div class="wb-body" id="autoDone" style="display:none">
+      <div class="pub-done">
+        <div class="pd-ico"><svg><use href="#i-check"/></svg></div>
+        <h4 id="autoDoneName">「销售数据日报」已启用</h4>
+        <p id="autoDoneSub">将按「工作日 08:30」自动执行并推送 · 下次执行：明天（周二）08:30<br>可在任务卡片随时暂停 / 编辑 · 执行身份为创建者本人（权限随人走）</p>
+      </div>
+    </div>
+
+    <div class="wb-foot" id="autoFoot">
+      <span class="ft-total">来源：会话「BI 数据查询」· 技能 bi_query（Ask）· 参数已带入</span>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" style="height:34px;padding:0 14px;font-size:12.5px" onclick="closeAuto()">取消</button>
+      <button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="autoNext(this)">下一步：配置任务</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script>
@@ -838,7 +2344,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 const convHeads = {
   order:{title:'销售订单录入',sub:'与 Agent 协作完成 OA 单据创建',skill:'oa_sales_order_entry',ver:'v1.2.0',mode:'craft',icon:'#i-cart'},
   approve:{title:'待办审批',sub:'聚合 OA 待办 · 内置二次确认',skill:'oa_todo_approve',ver:'v1.0.3',mode:'craft',icon:'#i-file'},
-  bi:{title:'BI 数据查询',sub:'只读查询 · 权限范围内数据',skill:'bi_query',ver:'v1.1.0',mode:'ask',icon:'#i-chart'}
+  bi:{title:'BI 数据查询',sub:'只读查询 · 权限范围内数据',skill:'bi_query',ver:'v1.1.0',mode:'ask',icon:'#i-chart'},
+  erp:{title:'ERP 复杂单据录入',sub:'主表 · 子表 · 孙表 三级结构 · 物料库 12,847 条',skill:'erp_sales_order_entry',ver:'v0.9.0',mode:'craft',icon:'#i-grid'}
 };
 const modeCls={ask:['md-ask','只问不写'],plan:['md-plan','先计划后执行'],craft:['md-craft','直接执行']};
 function renderHead(k){
@@ -850,12 +2357,419 @@ function renderHead(k){
     <div class="mode-display">模式 <span class="md-badge ${m[0]}">${m[1]}</span></div>`;
 }
 function switchConv(id){
+  switchView('chat');
   document.querySelectorAll('.conv-page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.conv-item').forEach(c=>c.classList.toggle('active',c.dataset.conv===id));
   document.getElementById('conv-'+id).classList.add('active');
   renderHead(id);
   const sc=document.getElementById('chatScroll');
   sc.scrollTo({top:sc.scrollHeight});
+}
+
+/* ---------- ERP 复杂单据：物料选用 / 工作台 / 孙表钻取 / 提交 ---------- */
+function pickMat(btn){
+  document.querySelectorAll('.mat-row').forEach(r=>r.classList.remove('picked'));
+  const row=btn.closest('.mat-row');
+  row.classList.add('picked');
+  toast('已选用：'+row.querySelector('.mat-name b').textContent+'（SP-1024）· 协议价 ¥128.00 带出','ok');
+}
+function openDoc(errOnly){
+  const wb=document.getElementById('docWb');
+  wb.classList.toggle('err-only',!!errOnly);
+  document.getElementById('wbErrBtn').textContent=errOnly?'显示全部行':'仅看异常行';
+  document.getElementById('docMask').classList.add('show');
+}
+function closeDoc(){document.getElementById('docMask').classList.remove('show')}
+function wbErrOnly(btn){
+  const wb=document.getElementById('docWb');
+  wb.classList.toggle('err-only');
+  btn.textContent=wb.classList.contains('err-only')?'显示全部行':'仅看异常行';
+}
+function toggleSub(el){el.closest('.sub-tr').classList.toggle('open')}
+function erpSubmit(btn){
+  btn.disabled=true;btn.innerHTML='<svg><use href="#i-check"/></svg>提交中…';
+  setTimeout(()=>{
+    document.getElementById('erpSuccess').style.display='';
+    const sc=document.getElementById('chatScroll');
+    sc.scrollTo({top:sc.scrollHeight,behavior:'smooth'});
+    toast('ERP-SO-20260916-0412 已创建 · 主/子/孙三级写入','ok');
+  },600);
+}
+
+/* ---------- 技能市场 · 上架向导（科室管理员提交 → 信息科安全评审 → 发布） ---------- */
+let pubData={mode:'ask',scope:'dept'};
+let pubStage='form';
+let mkDeptCount=12,mkReviewCount=2;
+function openPub(){
+  pubStage='form';pubData={mode:'ask',scope:'dept'};
+  document.getElementById('pubForm').style.display='';
+  document.getElementById('pubReview').style.display='none';
+  document.getElementById('pubDone').style.display='none';
+  setPubStep(1);
+  document.querySelectorAll('#pubWb .mode-chip').forEach(c=>c.classList.toggle('active',c.classList.contains('mc-ask')));
+  document.querySelectorAll('#pubWb .radio-chip').forEach(c=>c.classList.remove('active'));
+  document.querySelector('#pubWb .radio-chip').classList.add('active');
+  document.getElementById('pubFoot').innerHTML='<span class="ft-total">提交后进入信息科安全评审 · 期间技能以「评审中」展示，不可安装</span><span class="spacer"></span><button class="btn btn-ghost" style="height:34px;padding:0 14px;font-size:12.5px" onclick="closePub()">取消</button><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="pubSubmit(this)"><svg><use href="#i-send"/></svg>提交安全评审</button>';
+  document.getElementById('pubMask').classList.add('show');
+}
+function closePub(){document.getElementById('pubMask').classList.remove('show')}
+function setPubStep(n){
+  [1,2,3].forEach(i=>{
+    const el=document.getElementById('pfs'+i);
+    el.classList.toggle('done',i<n);
+    el.classList.toggle('cur',i===n);
+  });
+}
+function pubMode(btn,mode){
+  document.querySelectorAll('#pubWb .mode-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  pubData.mode=mode;
+  const tips={ask:'只问不写：仅只读工具，无确认卡，走快审通道',plan:'先计划后执行：先出执行计划卡，用户批准后执行',craft:'直接执行：写入类技能将强制 HITL 确认卡 + 安全评审'};
+  toast('执行模式：'+tips[mode],'info');
+}
+function pubScope(btn,scope){
+  document.querySelectorAll('#pubWb .radio-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  pubData.scope=scope;
+  if(scope==='company'){toast('全公司发布：除安全评审外，还需信息科额外的跨科室数据授权确认','info')}
+}
+function toggleTool(row){row.classList.toggle('on')}
+function pubChip(btn){
+  const chips=document.getElementById('pubChips').querySelectorAll('.sk-chip:not(.chip-add)');
+  if(chips.length>=4){toast('示例问法最多 4 条（演示上限）','info');return}
+  const pool=['"哪些合同这个月到期"','"查一下回款情况"','"上季度签了哪些单"'];
+  const s=document.createElement('span');
+  s.className='sk-chip';
+  s.textContent=pool[chips.length-2];
+  btn.parentNode.insertBefore(s,btn);
+  toast('已添加示例问法（用于市场检索与技能路由）','ok');
+}
+function pubSubmit(btn){
+  const name=document.getElementById('pubName').value.trim();
+  if(!name){toast('请填写技能名称','warn');document.getElementById('pubName').focus();return}
+  if(!document.querySelectorAll('#pubWb .tool-row.on').length){toast('请至少声明 1 个调用工具（安全评审依据）','warn');return}
+  btn.disabled=true;btn.innerHTML='<svg><use href="#i-check"/></svg>提交中…';
+  setTimeout(()=>{
+    pubStage='review';
+    setPubStep(2);
+    document.getElementById('pubForm').style.display='none';
+    document.getElementById('pubReview').style.display='';
+    document.getElementById('rvName').textContent=name;
+    const hasWrite=!!document.querySelector('#pubWb .tool-row.on .tool-rw.w');
+    document.getElementById('rvRule').innerHTML=hasWrite
+      ?'含写入类工具（crm__update_contract_remark）→ <b style="color:var(--red)">强制安全评审 · ≤2 个工作日</b>'
+      :'仅只读工具 · '+pubData.mode.toUpperCase()+' 模式 → <b style="color:var(--green)">快审通道（≤4 小时）</b>';
+    document.getElementById('pubFoot').innerHTML='<span class="ft-total">评审单 <b>SEC-RV-20260916-007</b> 已提交 · 结果将推送企微通知</span><span class="spacer"></span><button class="mini-btn" onclick="closePub()">稍后再看</button><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="pubApprove(this)"><svg><use href="#i-check"/></svg>模拟：评审通过</button>';
+    insertPubCard(name,false);
+    toast('已提交安全评审 · 技能以「评审中」状态出现在市场列表','ok');
+  },600);
+}
+function pubApprove(btn){
+  if(pubStage!=='review')return;
+  btn.disabled=true;btn.innerHTML='<svg><use href="#i-check"/></svg>评审通过 · 发布中…';
+  setTimeout(()=>{
+    pubStage='done';
+    setPubStep(3);
+    document.getElementById('pubReview').style.display='none';
+    document.getElementById('pubDone').style.display='';
+    const name=document.getElementById('pubName').value.trim();
+    document.getElementById('pubDoneName').textContent='「'+name+'」已发布上架';
+    document.getElementById('pubFoot').innerHTML='<span class="ft-total">已发布到「科室技能（销售科）」· v1.0.0 · 安装量与评分使用后开放</span><span class="spacer"></span><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="closePub()"><svg><use href="#i-check"/></svg>完成</button>';
+    insertPubCard(name,true);
+    toast('安全评审通过 · 技能已发布上架','ok');
+  },700);
+}
+function insertPubCard(name,approved){
+  let card=document.getElementById('pubSkillCard');
+  const isNew=!card;
+  if(isNew){
+    card=document.createElement('div');
+    card.className='skill-card';
+    card.id='pubSkillCard';
+    card.dataset.cat='dept';
+    document.querySelector('#page-market .skill-grid').prepend(card);
+    mkDeptCount++;
+  }
+  if(!approved&&!isNew){/* 已存在评审中卡片，仅刷新状态 */}
+  const badge=pubData.mode==='craft'
+    ?'<span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>Craft</span>'
+    :(pubData.mode==='plan'
+      ?'<span class="cbadge" style="background:var(--amber-soft);color:var(--amber)"><svg><use href="#i-chart"/></svg>Plan</span>'
+      :'<span class="cbadge cb-ask"><svg><use href="#i-shield"/></svg>Ask</span>');
+  const desc=pubData.mode==='craft'
+    ?'按客户 / 日期查询合同台账与回款 · 写入备注需 HITL 确认卡'
+    :'按客户 / 日期查询销售合同台账：状态、金额、到期与回款情况';
+  card.innerHTML='<div class="sk-top"><div class="sk-ico ci-skill-blue"><svg><use href="#i-file"/></svg></div><div class="sk-meta"><b>'+name+'</b><span>销售科 · 科室 · v1.0.0'+(approved?'':' · <i style="color:var(--amber);font-style:normal">安全评审中</i>')+'</span></div>'+badge+'</div>'
+    +'<div class="sk-desc">'+desc+'</div>'
+    +'<div class="sk-chips"><span class="sk-chip">"查一下华强电子的合同"</span><span class="sk-chip">"本月有哪些合同没回款"</span></div>'
+    +'<div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>新品 · 0 安装</span>'+(approved
+      ?'<button class="mini-btn agree" onclick="installSkill(this,true)"><svg><use href="#i-download"/></svg>安装</button>'
+      :'<button class="mini-btn disabled" disabled>评审中</button>')+'</div>';
+  mkReviewCount=approved?2:3;
+  const stat=document.querySelectorAll('#page-market .stat-card')[1];
+  stat.querySelector('.s-v').textContent=mkDeptCount;
+  stat.querySelector('.s-l').textContent='科室技能（含审核中 '+mkReviewCount+'）';
+}
+
+/* ---------- 视图路由（会话 / 技能市场 / 知识库 / 自动化 / 记忆 / 设置） ---------- */
+function switchView(v){
+  const isChat=v==='chat';
+  document.querySelector('main.chat').style.display=isChat?'flex':'none';
+  document.querySelectorAll('.page-view').forEach(p=>p.classList.toggle('active',p.id==='page-'+v));
+  document.getElementById('ctxPanel').style.display=isChat?'flex':'none';
+  document.querySelectorAll('.nav-item[data-view]').forEach(n=>n.classList.toggle('active',n.dataset.view===v));
+  if(!isChat){document.querySelectorAll('.conv-item').forEach(c=>c.classList.remove('active'))}
+}
+
+/* ---------- 登录 / 退出（PRD 8.5 SSO） ---------- */
+function login(idp,btn){
+  const names={ad:'AD 域认证（Keycloak Broker）',wecom:'企业微信免登',dingtalk:'钉钉免登'};
+  const label=btn.querySelector('.sso-meta b');
+  const orig=label.textContent;
+  btn.classList.add('loading');
+  label.textContent='正在跳转 '+names[idp]+'…';
+  setTimeout(()=>{
+    btn.classList.remove('loading');
+    label.textContent=orig;
+    document.getElementById('viewLogin').style.display='none';
+    document.getElementById('viewApp').style.display='flex';
+    toast('SSO 登录成功（'+idp.toUpperCase()+'）· 已按 HR 主数据关联：事业部A / 销售科','ok');
+    setTimeout(()=>toast('权限缓存已加载：perm_ver 17 · OA 销售单据读写 · BI 事业部A只读','info'),900);
+  },1400);
+}
+function logout(){
+  document.getElementById('viewApp').style.display='none';
+  document.getElementById('viewLogin').style.display='flex';
+  switchView('chat');
+  renderHead('order');
+  toast('已退出登录，会话已销毁（HttpOnly Cookie 失效）','info');
+}
+
+/* ---------- 技能市场 ---------- */
+function mkTab(btn,cat){
+  document.querySelectorAll('#page-market .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#page-market .skill-card').forEach(c=>{
+    c.style.display=(cat==='all'||c.dataset.cat===cat)?'flex':'none';
+  });
+}
+function installSkill(btn,allowed){
+  if(!allowed){toast('权限不足：缺少 hr:expense:read（HR 主数据），该技能不可安装 —— 安装即校验权限','warn');return}
+  btn.disabled=true;
+  btn.innerHTML='安装中…';
+  setTimeout(()=>{
+    btn.classList.add('installed');
+    btn.innerHTML='已安装 ✓';
+    toast('安装成功：已授予技能声明的工具权限子集，可在「我的技能」中查看','ok');
+  },900);
+}
+
+/* ---------- 自动化 ---------- */
+const TPL={
+  weekly:{name:'工作周报',sched:'每周',time:'17:00',chans:['Chat-Work 会话','邮件'],skill:'weekly_report',mode:'Plan'},
+  todo:{name:'审批超时日报',sched:'每天',time:'18:00',chans:['Chat-Work 会话'],skill:'oa_todo_approve',mode:'Ask'},
+  wms:{name:'库存预警监控',sched:'事件触发',time:'',chans:['企微机器人'],skill:'wms_stock_alert',mode:'Ask'},
+  contract:{name:'合同到期提醒',sched:'每月',time:'09:00',chans:['企微机器人'],skill:'contract_reminder',mode:'Ask'},
+  monthly:{name:'月度经营简报',sched:'每月',time:'09:00',chans:['邮件'],skill:'bi_query',mode:'Ask'}
+};
+let autoData={src:'conv',name:'销售数据日报',sched:'工作日',time:'08:30',chans:['企微机器人','Chat-Work 会话'],skill:'bi_query',mode:'Ask'};
+let autoStage=1;
+function openTpl(){document.getElementById('tplMask').classList.add('show')}
+function closeTpl(){document.getElementById('tplMask').classList.remove('show')}
+function useTpl(key){
+  const t=TPL[key];
+  autoData={src:'tpl',name:t.name,sched:t.sched,time:t.time,chans:t.chans.slice(),skill:t.skill,mode:t.mode};
+  closeTpl();
+  openAuto(true);
+  toast('已套用模板「'+t.name+'」：调度与推送已预填，可修改后试运行','ok');
+}
+function openAuto(fromTpl){
+  autoStage=fromTpl?2:1;
+  if(!fromTpl){autoData={src:'conv',name:'销售数据日报',sched:'工作日',time:'08:30',chans:['企微机器人','Chat-Work 会话'],skill:'bi_query',mode:'Ask'}}
+  applyCfg();
+  showAutoStage(autoStage);
+  document.getElementById('autoMask').classList.add('show');
+}
+function closeAuto(){document.getElementById('autoMask').classList.remove('show')}
+function applyCfg(){
+  document.getElementById('autoName').value=autoData.name;
+  document.querySelectorAll('#schedChips .radio-chip').forEach(c=>c.classList.toggle('active',c.textContent===autoData.sched));
+  document.getElementById('autoTime').value=autoData.time;
+  document.getElementById('autoTime').style.display=autoData.sched==='事件触发'?'none':'';
+  document.querySelectorAll('#chanChips .radio-chip').forEach(c=>c.classList.toggle('active',autoData.chans.includes(c.textContent)));
+}
+function showAutoStage(n){
+  autoStage=n;
+  const views={1:'autoSrc',2:'autoCfg',3:'autoRun',4:'autoDone'};
+  Object.entries(views).forEach(([k,id])=>{document.getElementById(id).style.display=(+k===n)?'':'none'});
+  [1,2,3,4].forEach(i=>{
+    const el=document.getElementById('as'+i);
+    el.classList.toggle('done',i<n);
+    el.classList.toggle('cur',i===n);
+  });
+  const foot=document.getElementById('autoFoot');
+  if(n===1){
+    foot.innerHTML='<span class="ft-total">来源：会话「BI 数据查询」· 技能 bi_query（Ask）· 参数已带入</span><span class="spacer"></span><button class="btn btn-ghost" style="height:34px;padding:0 14px;font-size:12.5px" onclick="closeAuto()">取消</button><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="autoNext(this)">下一步：配置任务</button>';
+  }else if(n===2){
+    foot.innerHTML='<span class="ft-total">来源：'+(autoData.src==='tpl'?'模板「'+autoData.name+'」（已预填）':(autoData.src==='blank'?'空白创建':'会话「BI 数据查询」转换'))+' · 模式锁定 '+autoData.mode+'（防护栏）</span><span class="spacer"></span><button class="btn btn-ghost" style="height:34px;padding:0 14px;font-size:12.5px" onclick="autoPrev()">上一步</button><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="autoTry(this)"><svg><use href="#i-play"/></svg>试运行</button>';
+  }else if(n===3){
+    foot.innerHTML='<span class="ft-total">试运行成功 · 请确认输出符合预期（HITL）后启用</span><span class="spacer"></span><button class="btn btn-ghost" style="height:34px;padding:0 14px;font-size:12.5px" onclick="autoPrev()">返回调整</button><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="autoEnable(this)"><svg><use href="#i-check"/></svg>确认无误 · 启用任务</button>';
+  }else{
+    foot.innerHTML='<span class="ft-total">任务已启用 · 将按调度自动执行并推送（权限随人走）</span><span class="spacer"></span><button class="btn btn-primary" style="height:34px;padding:0 16px;font-size:12.5px" onclick="closeAuto()"><svg><use href="#i-check"/></svg>完成</button>';
+  }
+}
+function pickSrc(card,src){
+  document.querySelectorAll('#autoWb .src-card').forEach(c=>c.classList.remove('on'));
+  card.classList.add('on');
+  autoData.src=src;
+  const names={conv:'会话「BI 数据查询」转换',tpl:'模板创建',blank:'空白创建'};
+  document.querySelector('#autoFoot .ft-total').textContent='来源：'+names[src]+(src==='conv'?' · 技能 bi_query（Ask）· 参数已带入':'');
+  if(src==='tpl'){toast('已选择模板来源：即将打开模板库，选择后自动预填','info');setTimeout(openTpl,350)}
+  if(src==='blank'){autoData.name='我的自动化任务';autoData.skill='bi_query';toast('空白创建：需手动选择技能与参数（演示以会话转换路径为主）','info')}
+}
+function pickSched(btn){
+  document.querySelectorAll('#schedChips .radio-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  autoData.sched=btn.textContent;
+  document.getElementById('autoTime').style.display=btn.textContent==='事件触发'?'none':'';
+}
+function toggleChan(btn){
+  btn.classList.toggle('active');
+  autoData.chans=Array.from(document.querySelectorAll('#chanChips .radio-chip.active')).map(c=>c.textContent);
+}
+function autoNext(){
+  applyCfg();
+  showAutoStage(2);
+}
+function autoPrev(){
+  if(autoStage===3){showAutoStage(2)}else{showAutoStage(1)}
+}
+function autoTry(btn){
+  const name=document.getElementById('autoName').value.trim();
+  if(!name){toast('请填写任务名称','warn');document.getElementById('autoName').focus();return}
+  autoData.name=name;
+  autoData.sched=Array.from(document.querySelectorAll('#schedChips .radio-chip.active')).map(c=>c.textContent)[0]||'工作日';
+  autoData.time=document.getElementById('autoTime').value;
+  autoData.chans=Array.from(document.querySelectorAll('#chanChips .radio-chip.active')).map(c=>c.textContent);
+  btn.disabled=true;btn.innerHTML='<svg><use href="#i-play"/></svg>试运行中…';
+  setTimeout(()=>{
+    btn.disabled=false;btn.innerHTML='<svg><use href="#i-play"/></svg>试运行';
+    document.getElementById('tryName').textContent=name;
+    document.getElementById('tryNote').textContent='推送预览：将发送至 '+(autoData.chans.join(' + ')||'Chat-Work 会话')+' · 输出结构与本次一致，数据每次执行自动更新';
+    showAutoStage(3);
+    toast('试运行成功（38s · 12.4K tokens）· 请确认输出后启用','ok');
+  },700);
+}
+function autoEnable(btn){
+  btn.disabled=true;btn.innerHTML='<svg><use href="#i-check"/></svg>启用中…';
+  setTimeout(()=>{
+    showAutoStage(4);
+    const schedTxt=autoData.sched==='事件触发'?'事件触发':(autoData.sched+' '+autoData.time);
+    document.getElementById('autoDoneName').textContent='「'+autoData.name+'」已启用';
+    document.getElementById('autoDoneSub').innerHTML='将按「'+schedTxt+'」自动执行并推送'+(autoData.sched==='事件触发'?'':' · 下次执行：明天（周二）'+autoData.time)+'<br>可在任务卡片随时暂停 / 编辑 · 执行身份为创建者本人（权限随人走）';
+    insertAutoCard();
+    toast('「'+autoData.name+'」已启用 · 将按 '+schedTxt+' 自动执行','ok');
+  },700);
+}
+function insertAutoCard(){
+  if(document.getElementById('newAutoCard'))return;
+  const schedTxt=autoData.sched==='事件触发'?'事件触发（库存 &lt; 安全阈值）':(autoData.sched+' '+autoData.time+'（跳过法定节假日）');
+  const card=document.createElement('div');
+  card.className='auto-card';
+  card.id='newAutoCard';
+  card.innerHTML='<div class="auto-top">'
+    +'<div class="auto-ico ci-skill-blue"><svg><use href="#i-chart"/></svg></div>'
+    +'<div class="auto-main"><b>'+autoData.name+' <span class="d-badge d-tag">auto_001299</span></b>'
+    +'<div class="a-sub"><span>技能 <span class="hlk">'+autoData.skill+'</span>（'+autoData.mode+'）</span><span>调度：'+schedTxt+'</span><span>推送：'+(autoData.chans.join(' + ')||'Chat-Work 会话')+'</span></div></div>'
+    +'<div class="auto-state"><span class="state-pill st-run"><svg style="width:10px;height:10px"><use href="#i-play"/></svg>运行中</span><div class="switch on"></div></div></div>'
+    +'<div class="auto-next"><span>下次执行 <b>'+(autoData.sched==='事件触发'?'满足触发条件时':('明天（周二）'+autoData.time))+'</b></span><span>来源：'+(autoData.src==='tpl'?'模板库':'会话转换')+' · 2026-09-16 创建</span><span>本月成功 <b>1/1</b></span></div>'
+    +'<div class="auto-result">试运行成功（今天 10:41 · 38s · 12.4K tokens）：输出已人工确认符合预期，等待首次自动执行。</div>';
+  card.querySelector('.switch').onclick=function(){toggleAuto(this,autoData.name)};
+  const first=document.querySelector('#page-auto .auto-card');
+  first.parentNode.insertBefore(card,first);
+  const hist=document.querySelector('#page-auto .hist-card');
+  if(hist){
+    const row=document.createElement('div');
+    row.className='hist-row';
+    row.innerHTML='<span class="hist-time">09-16 10:41</span><span class="hist-name">'+autoData.name+'</span><div class="hist-meta"><span class="rr-badge rb-green">试运行成功</span><span>38s</span><span>12.4K tokens</span><span>人工确认输出</span></div>';
+    hist.querySelector('.hist-head').after(row);
+  }
+}
+function toggleAuto(sw,name){
+  const card=sw.closest('.auto-card');
+  const pill=card.querySelector('.state-pill');
+  const on=sw.classList.toggle('on');
+  if(pill){
+    pill.className='state-pill '+(on?'st-run':'st-pause');
+    pill.innerHTML=(on?'<svg style="width:10px;height:10px"><use href="#i-play"/></svg>运行中':'<svg style="width:10px;height:10px"><use href="#i-pause"/></svg>已暂停');
+  }
+  toast(on?('「'+name+'」已恢复，将按调度规则自动执行'):('「'+name+'」已暂停，下次执行取消'),'info');
+}
+function resumeAuto(btn){
+  const card=btn.closest('.auto-card');
+  const sw=card.querySelector('.switch');
+  sw.classList.add('on');
+  const pill=card.querySelector('.state-pill');
+  pill.className='state-pill st-run';
+  pill.innerHTML='<svg style="width:10px;height:10px"><use href="#i-play"/></svg>运行中';
+  const warn=card.querySelector('.auto-result[style*="red"]');
+  if(warn){warn.style.cssText='';warn.style.cssText='background:var(--line-soft);color:var(--muted)';warn.innerHTML='<b>任务已恢复</b>：下次按事件触发执行，继续监控库存阈值。'}
+  btn.remove();
+  toast('库存预警监控已恢复，失败计数已清零','ok');
+}
+
+/* ---------- 我的记忆 ---------- */
+function delMemory(btn,name){
+  if(btn.dataset.armed){
+    const row=btn.closest('.mem-row');
+    row.style.transition='.25s';
+    row.style.opacity='0';
+    setTimeout(()=>row.remove(),250);
+    toast('已删除记忆：「'+name+'」，Agent 将不再引用','ok');
+    const head=document.querySelector('#memList .c-title b');
+    const n=Math.max(0,(parseInt(head.textContent.match(/\d+/)||[0])[0])-1);
+    head.textContent='个人记忆 · '+n+' 条';
+    return;
+  }
+  btn.dataset.armed='1';
+  btn.innerHTML='确认删除?';
+  setTimeout(()=>{if(btn.isConnected){btn.dataset.armed='';btn.innerHTML='<svg style="width:11px;height:11px"><use href="#i-trash"/></svg>删除'}},2600);
+}
+function wipeMemory(btn){
+  if(!btn.dataset.armed){
+    btn.dataset.armed='1';
+    btn.innerHTML='再次点击确认清除';
+    setTimeout(()=>{if(btn.isConnected){btn.dataset.armed='';btn.innerHTML='<svg style="width:11px;height:11px"><use href="#i-trash"/></svg>清除全部'}},3000);
+    return;
+  }
+  document.querySelectorAll('#memList .mem-row').forEach(r=>r.remove());
+  document.querySelector('#memList .c-title b').textContent='个人记忆 · 0 条';
+  toast('已清除全部个人记忆（4 条）· 会话记忆不受影响','ok');
+}
+function toggleMemConsent(sw){
+  const on=sw.classList.toggle('on');
+  const card=sw.closest('.consent-card');
+  const b=card.querySelector('b'),span=card.querySelector('span');
+  if(on){b.textContent='个人记忆已启用';span.textContent='你于 2026-09-01 明确同意启用（PIPL 知情同意）。关闭后仅保留 L1 会话记忆（7 天自动过期），核心功能不受影响；已沉淀的个人记忆将停止引用并可清除。'}
+  else{b.textContent='个人记忆已关闭';span.textContent='仅保留 L1 会话记忆（7 天自动过期），核心功能不受影响。重新开启后，Agent 将在获得你的同意后重新沉淀偏好与常用参数（PIPL）。'}
+  toast(on?'个人记忆已开启：偏好与常用参数将自动沉淀，可随时管理':'个人记忆已关闭：Agent 不再写入/引用 L2 记忆',on?'ok':'warn');
+}
+
+/* ---------- 设置 ---------- */
+function setNav(btn,target){
+  document.querySelectorAll('.sn-item').forEach(n=>n.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(target).scrollIntoView({behavior:'smooth',block:'start'});
+}
+function toggleSwitch(sw,name){
+  const on=sw.classList.toggle('on');
+  toast('「'+name+'」已'+(on?'开启':'关闭'),on?'ok':'info');
+}
+function setPrefMode(btn,mode){
+  document.querySelectorAll('#sc-exec .radio-chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  const names={ask:'只问不写（Ask）',plan:'先计划后执行（Plan）',craft:'直接执行（Craft）'};
+  toast('默认执行模式已设为：'+names[mode]+' · 写入操作仍强制确认卡','ok');
 }
 
 /* ---------- 模式切换 ---------- */

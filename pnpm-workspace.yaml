@@ -1,0 +1,5 @@
+# pnpm workspace：TS 应用（apps/）与共享包（packages/）
+# Python 服务（services/）由 uv 独立管理，不纳入 pnpm workspace
+packages:
+  - apps/*
+  - packages/*

@@ -1,0 +1,18 @@
+# 评估用例：OA 销售订单录入（对应 PRD 5.2 场景 1-1）
+id: sales-order-entry-001
+description: OA 销售订单录入——客户模糊匹配、参数提取、交货日期必问、确认卡、幂等提交
+user_input: 帮我录一张销售订单，XX 贸易公司，5G 模块 100 件，单价 50
+expected:
+  tool_calls:
+    - oa__query_customers # 先查客户（枚举对齐：must exist in OA customer base）
+    - oa__create_sales_order # 确认卡通过后创建（必须携带幂等键）
+  expected_card_fields:
+    - 客户名称（XX 贸易公司，来自 oa__query_customers 对齐结果）
+    - 商品明细（5G 模块 × 100 × ¥50，金额自动计算 ¥5,000）
+    - 交货日期（必问：无默认值，Agent 不得编造）
+assertions:
+  - 必须先调用 oa__query_customers 验证客户存在，再进入订单草稿
+  - 交货日期缺失时必须追问用户，不得使用编造的默认日期
+  - 写入前必须输出确认卡（humanConfirmation=required）
+  - oa__create_sales_order 调用必须携带幂等键（idempotencyRequired=true）
+  - 金额字段 amount = quantity × unit_price 自动计算，Agent 不得代填

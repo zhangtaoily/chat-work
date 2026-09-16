@@ -1,0 +1,172 @@
+# MVP 单机部署（Docker Compose，ARCHITECTURE 8.1 服务清单）
+# 所有环境变量均为占位值：生产环境经 .env / 内网配置中心注入
+name: chat-work
+
+services:
+  # ── 接入层 ──────────────────────────────────────────────────────────
+  apisix:
+    image: apache/apisix:3.12.0-alpine
+    ports:
+      - "80:9080" # HTTP 入口（生产经 443/TLS 终结）
+    volumes:
+      - apisix_data:/usr/local/apisix
+    depends_on:
+      - keycloak
+    # TODO: 路由 /api/* → agent-core、/mcp/* → 各 mcp server；
+    #       插件：jwt-verify（RS256 本地公钥验签）/ limit-count / audit-log
+    #       配置文件纳入 infra/apisix 版本化
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin # 占位：生产改密
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin # 占位：生产改密
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak # Keycloak 专用库（占位）
+      KC_DB_USERNAME: keycloak # 占位
+      KC_DB_PASSWORD: keycloak # 占位
+    volumes:
+      - ../keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── 应用层（Python，每系统独立进程）─────────────────────────────────
+  agent-core:
+    build:
+      context: ../../services/agent_core # TODO: Dockerfile 待补（uv 同步依赖 + 非 root 运行）
+      dockerfile: Dockerfile
+    command: uvicorn agent_core.api.main:app --host 0.0.0.0 --port 8000 --workers 2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/chatwork # 占位
+      REDIS_URL: redis://redis:6379/0 # 占位（会话记忆/权限缓存/车道队列）
+      MILVUS_URI: http://milvus:19530 # 占位（记忆/知识向量）
+      LLM_BASE_URL: http://vllm:8000/v1 # 占位（vLLM OpenAI 兼容 API）
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mcp-oa:
+    build:
+      context: ../../services/mcp_oa # TODO: Dockerfile 待补
+      dockerfile: Dockerfile
+    command: python server.py # TODO: Streamable HTTP 启动（MVP 降级 SSE）
+    environment:
+      OA_BASE_URL: http://oa.example.internal/api # 占位：OA OpenAPI 地址
+      DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/chatwork # 幂等表
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mcp-bi:
+    build:
+      context: ../../services/mcp_bi # TODO: Dockerfile 待补
+      dockerfile: Dockerfile
+    command: python server.py
+    environment:
+      BI_BASE_URL: http://bi.example.internal/api # 占位：BI OpenAPI 地址
+
+  # ── 基础设施层 ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app # 占位
+      POSTGRES_PASSWORD: app # 占位
+      POSTGRES_DB: chatwork
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d chatwork"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Milvus 单机 standalone 最小拓扑：etcd（元数据）+ minio（对象存储）+ milvus
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.14
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcd_data:/etcd
+
+  milvus:
+    image: milvusdb/milvus:v2.4.15
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: minioadmin # 占位
+      MINIO_SECRET_KEY: minioadmin # 占位
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530" # gRPC（记忆/知识向量）
+    depends_on:
+      - etcd
+      - minio
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin # 占位
+      MINIO_ROOT_PASSWORD: minioadmin # 占位
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000" # S3 API（任务产物/附件）
+      - "9001:9001" # 控制台
+
+  # vLLM：私有化 LLM 推理（A10×2 GPU，OpenAI 兼容 :8000）
+  # TODO: 需 GPU 节点；镜像与模型路径按内网制品仓选择
+  vllm:
+    image: vllm/vllm-openai:latest # 占位：内网镜像仓
+    environment:
+      MODEL: /models/qwen # 占位：内网模型权重路径
+    ports:
+      - "8000:8000"
+    # deploy:  # 需 GPU 时启用
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 2 # A10×2
+    #           capabilities: [gpu]
+    # volumes:
+    #   - /data/models:/models # 占位：模型权重挂载
+
+  # 桌面端内网更新服务器（electron-updater feed，MVP 起）
+  # TODO: 静态文件服务（nginx/minio 均可），目录结构 latest.yml + 各版本安装包；
+  #       桌面端 electron-updater 指向该 feed 实现灰度更新
+  # update-server:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "8443:80"
+  #   volumes:
+  #     - ../../releases/desktop:/usr/share/nginx/html:ro
+
+volumes:
+  apisix_data:
+  pg_data:
+  redis_data:
+  etcd_data:
+  milvus_data:
+  minio_data:
