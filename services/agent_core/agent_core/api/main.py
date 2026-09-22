@@ -35,21 +35,31 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent_core import audit, automation
-from agent_core.api import gray
+from agent_core.api import admin, gray
 from agent_core.api.auth import AuthContext, authenticate, set_sso_required, sso_required
 from agent_core.guardrail import confirm_store
 from agent_core.knowledge import store as knowledge_store
-from agent_core.pipeline.graph import build_graph, build_resume_graph
+from agent_core.pipeline.graph import (
+    build_graph,
+    build_plan_resume_graph,
+    build_resume_graph,
+)
 from agent_core.skills import store
 from agent_core.skills.registry import get_skill
+from agent_core.syscfg import store as syscfg
+from agent_core.workflow import store as workflow_store
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """启动恢复：技能市场 / 知识库 / 自动化任务快照，并挂载调度器（PLAN P2.3-P2.5）。"""
+    """启动恢复：技能市场 / 知识库 / 编排 / 自动化任务快照，并挂载调度器
+    （PLAN P2.3-P2.6）；官方跨系统编排 seed（幂等，PRD 6.3）。"""
     await store.restore()
     await knowledge_store.restore()
+    await workflow_store.restore()
+    await workflow_store.seed_official()
     await automation.restore()
+    await syscfg.restore()
     automation.start_scheduler()
     yield
     automation.stop_scheduler()
@@ -70,13 +80,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Web 管理后台（PLAN P2.7，PRD 5.6）：/admin/* 路由 + 敏感页不落浏览器缓存
+app.include_router(admin.router)
+
+
+@app.middleware("http")
+async def _admin_no_store(request: Request, call_next: Any) -> Any:
+    response = await call_next(request)
+    if request.url.path.startswith("/admin"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 
 class ChatRequest(BaseModel):
-    """对话请求（user_id 优先取 JWT sub；无 token 且 SSO_REQUIRED=false 时才用直传值）。"""
+    """对话请求（user_id 优先取 JWT sub；无 token 且 SSO_REQUIRED=false 时才用直传值）。
+
+    mode：请求级三模式临时切换（PRD 3.3 规则1，PLAN P2.6）——
+    覆盖技能默认 mode，仅本轮流生效。
+    """
 
     session_id: str = Field(min_length=1)
     user_id: str = Field(default="")
     message: str = Field(min_length=1)
+    mode: str | None = Field(default=None, pattern="^(ask|plan|craft)$")
 
 
 class ConfirmRequest(BaseModel):
@@ -123,6 +150,37 @@ class AutomationCreateRequest(BaseModel):
     schedule: dict[str, Any]
     channel: dict[str, Any] | None = None
     scope: str = "personal"
+
+
+class EventFireRequest(BaseModel):
+    """事件手动触发请求（PLAN P2.6 p2-6d，PRD 3.6.1）。"""
+
+    event: str = Field(min_length=1)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowCreateRequest(BaseModel):
+    """编排注册请求（PLAN P2.6 p2-6f：steps 声明式，PRD 3.2.2）。"""
+
+    name: str = Field(min_length=1)
+    steps: list[dict[str, Any]]
+    description: str = ""
+    mode: str = "plan"
+    scope: str = "official"
+
+
+class WorkflowStatusRequest(BaseModel):
+    """编排启停请求（status: active/disabled）。"""
+
+    status: str
+
+
+class WorkflowExecuteRequest(BaseModel):
+    """编排手动执行请求（plan 模式先出计划卡，批准后携带 plan_approved 重入）。"""
+
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    mode: str | None = None
+    plan_approved: bool = False
 
 
 class KnowledgeUploadRequest(BaseModel):
@@ -240,6 +298,9 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             "session_id": req.session_id,
             "message": req.message,
         }
+        if req.mode:
+            # 请求级三模式临时切换（PRD 3.3 规则1，PLAN P2.6）
+            initial["mode_override"] = req.mode
         actor_token = None
         if auth is not None:
             # 身份上下文进流水线（permission 节点消费，PLAN P1.1）
@@ -294,6 +355,45 @@ async def confirm(token: str, req: ConfirmRequest, request: Request) -> dict[str
     if payload is None:
         raise HTTPException(status_code=404, detail="确认卡不存在或已过期")
 
+    # 编排写步骤确认卡分流（PLAN P2.6 p2-6c，PRD 6.3）：workflow payload
+    # key 为 "workflow"（无 "state"），必须在下方 payload["state"] 访问前
+    # 处理；resume_confirm 接收已 pop 的 payload，避免双重消费一次性令牌
+    if payload.get("workflow"):
+        snap = payload["workflow"]
+        wf_initiator = snap.get("user_id")
+        if auth is not None and wf_initiator and wf_initiator != auth.user_id:
+            await audit.record(
+                "confirm_denied",
+                user_id=auth.user_id,
+                session_id=snap.get("session_id"),
+                tool="workflow",
+                params={"workflow_id": snap.get("workflow_id"), "run_id": snap.get("run_id")},
+                result="denied",
+                detail=f"确认人 {auth.user_id} ≠ 发起人 {wf_initiator}",
+            )
+            raise HTTPException(status_code=403, detail="确认人与发起人不一致")
+        res = await workflow_store.resume_confirm(
+            token,
+            approved=req.action != "reject",
+            by=auth.user_id if auth else None,
+            payload=payload,
+        )
+        if res is None:  # pop 已判存在，防御恢复竞态
+            raise HTTPException(status_code=404, detail="确认卡不存在或已过期")
+        if res["status"] == "cancelled":
+            return {"status": "cancelled", "message": "已取消编排执行"}
+        run = res.get("run") or {}
+        status_text = {
+            "ok": "执行完成",
+            "partial": "部分执行（止步于写步骤）",
+            "failed": "执行失败",
+        }.get(res["status"], res["status"])
+        text = (
+            f"编排「{run.get('workflow_name', '')}」{status_text}："
+            f"{len(run.get('steps') or [])} 步已处理，结果通知已发送。"
+        )
+        return {"status": "ok", "final": {"text": text, "cards": []}}
+
     initiator = payload["state"].get("user_id")
     session_id = payload["state"].get("session_id")
     tool_call = payload["state"].get("tool_call") or {}
@@ -313,15 +413,48 @@ async def confirm(token: str, req: ConfirmRequest, request: Request) -> dict[str
         raise HTTPException(status_code=403, detail="确认人与发起人不一致")
 
     if req.action == "reject":
-        # 审计：用户主动拒绝（放弃写入，PLAN P1.2）
+        # 审计：用户主动拒绝（放弃写入/计划，PLAN P1.2）
         await audit.record(
-            "confirm_rejected",
+            "plan_rejected" if payload["state"].get("plan_pending") else "confirm_rejected",
             user_id=initiator,
             session_id=session_id,
             tool=tool_call.get("name"),
             params=tool_call.get("arguments"),
         )
         return {"status": "cancelled", "message": "已取消提交"}
+
+    if payload["state"].get("plan_pending"):
+        # Plan 计划卡批准（PLAN P2.6，PRD 3.3）：重进 hitl——写步骤挂确认卡
+        # （规则2 模式不豁免单步确认，两次确认链），只读步骤直接执行
+        snap_skill = payload["state"].get("skill") or {}
+        await audit.record(
+            "plan_approved",
+            user_id=initiator,
+            session_id=session_id,
+            tool=snap_skill.get("write_tool") or (snap_skill.get("read_tools") or [None])[0],
+            params={"skill": snap_skill.get("name")},
+        )
+        state = dict(payload["state"])
+        state.pop("plan_pending", None)
+        state.pop("confirm_token", None)  # 计划令牌已消费，避免恢复路径误判挂起
+        state["plan_approved"] = True
+        actor_token = None
+        if auth is not None:
+            actor_token = audit.set_actor(
+                {
+                    "user_id": auth.user_id,
+                    "session_id": session_id,
+                    "dept": auth.dept,
+                    "roles": auth.roles,
+                }
+            )
+        try:
+            resume = build_plan_resume_graph().compile()
+            final_state = await resume.ainvoke(state)
+        finally:
+            if actor_token is not None:
+                audit.reset_actor(actor_token)
+        return {"status": "ok", "final": final_state.get("final")}
 
     state: dict[str, Any] = dict(payload["state"])
     state["confirmed"] = True  # 恢复路径放行 execute（HITL 已确认）
@@ -660,6 +793,21 @@ async def automation_inbox_read(request: Request) -> dict[str, Any]:
     return {"status": "ok", "marked": marked}
 
 
+@app.post("/automations/events/fire")
+async def fire_automation_event(req: EventFireRequest, request: Request) -> dict[str, Any]:
+    """手动触发事件（PLAN P2.6 p2-6d，PRD 3.6.1）：立即执行匹配任务。
+
+    普通用户仅命中本人订阅任务；管理员（dept_manager/security_reviewer）
+    可触发全部任务。节流窗口（interval_minutes，默认 15 分钟）生效。
+    """
+    auth = _automation_auth(await _authenticate_or_401(request))
+    owner = None if {"dept_manager", "security_reviewer"} & set(auth.roles) else auth.user_id
+    try:
+        return await automation.fire_event(req.event, payload=req.payload, by=auth.user_id, owner=owner)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/automations/{task_id}")
 async def automation_detail(task_id: str, request: Request) -> dict[str, Any]:
     """任务详情（创建者本人或管理员）。"""
@@ -707,6 +855,158 @@ async def automation_history(
     _require_task(task_id, auth)
     items = automation.history(task_id, limit=max(1, min(limit, 100)))
     return {"items": items, "count": len(items)}
+
+
+# ---- 跨系统编排（PLAN P2.6 p2-6f，PRD 3.2.2/6.3：workflow 域 REST）----
+
+
+def _workflow_auth(auth: AuthContext | None) -> AuthContext:
+    """编排端点统一认证门禁（口径对齐自动化端点）。"""
+    if auth is None:
+        raise HTTPException(status_code=401, detail="编排管理需要认证")
+    return auth
+
+
+def _workflow_admin(auth: AuthContext) -> None:
+    """编排管理/手动执行门禁（仅管理员）。
+
+    常规执行入口为对话技能（graph permission 节点做销售岗角色校验）；
+    API 直接执行绕过权限管线，故收紧到管理员。
+    """
+    if not ({"dept_manager", "security_reviewer"} & set(auth.roles)):
+        raise HTTPException(status_code=403, detail="仅管理员可管理/手动执行编排")
+
+
+def _require_wf(wf_id: str) -> dict[str, Any]:
+    """取编排，不存在 → 404。"""
+    wf = workflow_store.detail(wf_id)
+    if wf is None:
+        raise HTTPException(status_code=404, detail=f"编排 {wf_id} 不存在")
+    return wf
+
+
+@app.get("/workflows")
+async def list_workflows(request: Request, status: str | None = None) -> dict[str, Any]:
+    """编排列表（官方/科室共享资产，登录可见；status 可选过滤）。"""
+    _workflow_auth(await _authenticate_or_401(request))
+    items = workflow_store.list_workflows(status=status)
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/workflows")
+async def create_workflow(req: WorkflowCreateRequest, request: Request) -> dict[str, Any]:
+    """注册编排定义（仅管理员）：steps 声明式校验失败 → 400。"""
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    _workflow_admin(auth)
+    try:
+        return await workflow_store.create(
+            name=req.name,
+            steps=req.steps,
+            owner=auth.user_id,
+            owner_auth={
+                "user_id": auth.user_id,
+                "dept": auth.dept,
+                "roles": list(auth.roles),
+            },
+            description=req.description,
+            mode=req.mode,
+            scope=req.scope,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/workflows/{wf_id}")
+async def workflow_detail(wf_id: str, request: Request) -> dict[str, Any]:
+    """编排详情（登录可见）。"""
+    _workflow_auth(await _authenticate_or_401(request))
+    return _require_wf(wf_id)
+
+
+@app.post("/workflows/{wf_id}/status")
+async def workflow_set_status(
+    wf_id: str, req: WorkflowStatusRequest, request: Request
+) -> dict[str, Any]:
+    """启停编排（仅管理员；停用后技能/自动化/事件触发均不可执行）。"""
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    _workflow_admin(auth)
+    try:
+        return await workflow_store.set_status(wf_id, status=req.status, by=auth.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/workflows/{wf_id}")
+async def delete_workflow(wf_id: str, request: Request) -> dict[str, Any]:
+    """删除编排（仅管理员；运行记录保留在审计与 store 内）。"""
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    _workflow_admin(auth)
+    _require_wf(wf_id)
+    await workflow_store.delete(wf_id, by=auth.user_id)
+    return {"status": "ok", "workflow_id": wf_id, "deleted": True}
+
+
+@app.post("/workflows/{wf_id}/execute")
+async def execute_workflow(
+    wf_id: str, req: WorkflowExecuteRequest, request: Request
+) -> dict[str, Any]:
+    """手动执行编排（仅管理员，PLAN P2.6 p2-6f）。
+
+    返回分形透传 store：plan 未批准 → 计划卡（客户端确认后携带
+    plan_approved=true 重入）；写步骤挂起 → pending_confirm +
+    confirm_token（走 POST /confirmations/{token} 恢复）；完成 → 终态。
+    """
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    _workflow_admin(auth)
+    try:
+        return await workflow_store.execute(
+            wf_id,
+            req.inputs,
+            trigger="manual",
+            actor_auth={
+                "user_id": auth.user_id,
+                "dept": auth.dept,
+                "roles": list(auth.roles),
+            },
+            user_id=auth.user_id,
+            mode=req.mode,
+            plan_approved=req.plan_approved,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/workflows/{wf_id}/runs")
+async def workflow_runs(
+    wf_id: str, request: Request, limit: int = 20
+) -> dict[str, Any]:
+    """运行历史（管理员全量；普通用户仅本人触发的运行）。"""
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    _require_wf(wf_id)
+    items = workflow_store.runs(wf_id, limit=max(1, min(limit, 100)))
+    if not ({"dept_manager", "security_reviewer"} & set(auth.roles)):
+        items = [r for r in items if r.get("actor") == auth.user_id]
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/workflow-notifications")
+async def workflow_notifications(
+    request: Request, limit: int = 50, unread_only: bool = False
+) -> dict[str, Any]:
+    """编排结果通知信箱（恒取当前用户，PRD 6.3 通知业务员）。"""
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    items = workflow_store.notifications(auth.user_id, limit=max(1, min(limit, 200)))
+    if unread_only:
+        items = [m for m in items if not m["read"]]
+    return {"items": items, "count": len(items)}
+
+
+@app.post("/workflow-notifications/read")
+async def workflow_notifications_read(request: Request) -> dict[str, Any]:
+    """编排通知全部已读标记。"""
+    auth = _workflow_auth(await _authenticate_or_401(request))
+    marked = workflow_store.mark_notifications_read(auth.user_id)
+    return {"status": "ok", "marked": marked}
 
 
 # ---- 知识库（PLAN P2.5，PRD 9.5：两级知识空间 + 入库流程 + RAG 检索）----

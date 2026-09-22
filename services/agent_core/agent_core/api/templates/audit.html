@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}审计日志 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>审计日志 <span class="muted">（审计者也被审计，PRD 5.6.4）</span></h2>
+<div class="card">
+  <form method="get" action="/admin/audit" class="inline">
+    操作人 <input type="text" name="user_id" value="{{ f_user }}" size="10">
+    动作 <input type="text" name="action" value="{{ f_action }}" size="14" placeholder="如 skill_review">
+    条数 <input type="number" name="limit" value="{{ f_limit }}" min="1" max="500" size="4">
+    <button class="pri">筛选</button>
+  </form>
+  <a class="btn" href="/admin/audit/export?user_id={{ f_user | urlencode }}&action={{ f_action | urlencode }}">导出 CSV（带水印）</a>
+</div>
+<table>
+  <tr><th>时间</th><th>操作人</th><th>动作</th><th>工具</th><th>结果</th><th>耗时(ms)</th><th>参数摘要</th><th>详情</th></tr>
+  {% for e in items %}
+  <tr>
+    <td class="muted">{{ e.time }}</td>
+    <td>{{ e.user_id or '-' }}</td>
+    <td><code>{{ e.action }}</code></td>
+    <td class="muted">{{ e.tool or '-' }}</td>
+    <td>
+      {% if e.result in ('success', 'ok') %}<span class="tag ok">{{ e.result }}</span>
+      {% elif e.result == 'first_approved' %}<span class="tag warn">first_approved</span>
+      {% elif e.result in ('error', 'rejected', 'denied', 'failed') %}<span class="tag bad">{{ e.result }}</span>
+      {% else %}<span class="tag">{{ e.result }}</span>{% endif %}
+    </td>
+    <td class="muted">{{ e.duration_ms if e.duration_ms is not none else '-' }}</td>
+    <td class="muted" title="{{ e.params_digest }}">{{ (e.params_digest or '')[:12] }}</td>
+    <td class="muted">{{ e.detail }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">无审计记录</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

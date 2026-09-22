@@ -100,14 +100,19 @@ async def test_register_and_read_auto_publish() -> None:
 
 @pytest.mark.asyncio
 async def test_write_review_flow_seq() -> None:
-    """写入类技能：submit → in_review（SEC-RV 单号自增）→ approve → published。"""
+    """写入类技能：submit → in_review（SEC-RV 单号自增）→ 双人复核通过 → published。"""
     await store.register(name="bulk_write", title="批量写入", rw="write", by="E1001")
     meta = await store.submit("bulk_write", by="E2002", note="首次提交")
     assert meta["status"] == "in_review"
     assert meta["review_id"] == "SEC-RV-0001"
     meta = await store.review("bulk_write", approve=True, by="SEC001", note="通过")
+    assert meta["status"] == "in_review"  # 双人复核：第一核后仍 in_review
+    assert [a["by"] for a in meta["approvals"]] == ["SEC001"]
+    with pytest.raises(ValueError, match="两名不同安全评审员"):
+        await store.review("bulk_write", approve=True, by="SEC001")  # 同核拒绝
+    meta = await store.review("bulk_write", approve=True, by="SEC002", note="复核通过")
     assert meta["status"] == "published"
-    assert meta["reviewed_by"] == "SEC001"
+    assert meta["reviewed_by"] == "SEC002"
     # 第二个写入技能评审单号自增
     await store.register(name="bulk_write2", title="批量写入二", rw="write", by="E1001")
     meta = await store.submit("bulk_write2", by="E2002")
@@ -172,9 +177,12 @@ async def test_audit_trail_digest() -> None:
     await store.register(name="bulk_write", title="批量写入", rw="write", by="E1001")
     await store.submit("bulk_write", by="E2002")
     await store.review("bulk_write", approve=True, by="SEC001")
+    await store.review("bulk_write", approve=True, by="SEC002")  # 双人复核后发布
     await store.deprecate("bulk_write", by="SEC001")
     actions = {e["action"] for e in await audit.recent(limit=100)}
     assert {"skill_register", "skill_submit", "skill_review", "skill_deprecate"} <= actions
+    events = await audit.recent(limit=100)
+    assert any(e["result"] == "first_approved" for e in events)  # 第一复核留痕
     sub = next(e for e in await audit.recent(limit=100) if e["action"] == "skill_submit")
     assert "bulk_write" in sub["params_digest"]
     assert "SEC-RV-0001" in sub["params_digest"]
@@ -264,6 +272,19 @@ def test_api_review_role_gate(client: TestClient, rsa_key: Any) -> None:
         headers=auth(sec),
     )
     assert r.status_code == 200
+    assert r.json()["status"] == "in_review"  # 双人复核：第一核后仍 in_review
+    # 同一评审人重复通过 → 400（防自批自核）
+    assert (
+        client.post("/skills/write_skill/review", json={"approve": True}, headers=auth(sec)).status_code
+        == 400
+    )
+    sec2 = make_token(rsa_key, sub="SEC002", roles=["security_reviewer"])
+    r = client.post(
+        "/skills/write_skill/review",
+        json={"approve": True, "note": "复核通过"},
+        headers=auth(sec2),
+    )
+    assert r.status_code == 200
     assert r.json()["status"] == "published"
 
 
@@ -285,7 +306,7 @@ def test_api_deprecate_role_gate(client: TestClient, rsa_key: Any) -> None:
 
 
 def test_api_lifecycle_full_flow(client: TestClient, rsa_key: Any) -> None:
-    """注册 → 提交（SEC-RV-*）→ 评审 → 安装 → 我的技能全流程。"""
+    """注册 → 提交（SEC-RV-*）→ 双人复核 → 安装 → 我的技能全流程。"""
     emp = make_token(rsa_key)
     r = client.post(
         "/skills/manage",
@@ -310,10 +331,15 @@ def test_api_lifecycle_full_flow(client: TestClient, rsa_key: Any) -> None:
     r = client.post("/skills/sales_broadcast/submit", json={"note": "首次上架"}, headers=auth(emp))
     assert r.status_code == 200
     assert r.json()["review_id"] == "SEC-RV-0001"
-    # security_reviewer 评审通过后安装
+    # security_reviewer 双人复核通过后安装（PRD 5.6.4）
     sec = make_token(rsa_key, roles=["security_reviewer"])
     r = client.post("/skills/sales_broadcast/review", json={"approve": True}, headers=auth(sec))
     assert r.status_code == 200
+    sec2 = make_token(rsa_key, sub="SEC002", roles=["security_reviewer"])
+    assert (
+        client.post("/skills/sales_broadcast/review", json={"approve": True}, headers=auth(sec2)).status_code
+        == 200
+    )
     assert client.post("/skills/sales_broadcast/install", headers=auth(emp)).status_code == 200
     mine = client.get("/skills/mine", headers=auth(emp)).json()
     assert [i["name"] for i in mine["items"]] == ["sales_broadcast"]

@@ -230,6 +230,8 @@ async def restore() -> None:
         if raw:
             snap = json.loads(raw)
             _docs.update(snap.get("docs", {}))
+            for d in _docs.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
+                d.setdefault("approvals", [])
             _gaps.update(snap.get("gaps", {}))
             _seq = int(snap.get("seq", 0))
             _index_backend = None
@@ -280,6 +282,7 @@ async def upload(
         "reviewed_by": None,
         "reviewed_at": None,
         "review_note": None,
+        "approvals": [],
         "published_at": None,
         "deprecated_at": None,
         "chunks": chunks,
@@ -319,6 +322,7 @@ async def submit(doc_id: str, *, by: str) -> dict[str, Any]:
     if doc["status"] not in {"draft", "rejected"}:
         raise ValueError(f"文档当前状态 {doc['status']} 不可提交")
     doc["status"] = "pending_review"
+    doc["approvals"] = []  # 重新审核清空历史批准（双人复核从零起算）
     await audit.record(
         "knowledge_submit",
         tool="knowledge_store",
@@ -335,20 +339,57 @@ async def review(doc_id: str, *, approve: bool, by: str, note: str = "") -> dict
     """审核（PRD 9.5.2：集团=信息科 / 科室=科室管理员，角色校验在 API 层）。
 
     通过即向量化入库（published 生效）；驳回回 rejected 可改后重新提交。
+    双人复核（PRD 5.6.4：D2+ 知识放行需双人）：D2/D3 文档第一名审核人
+    通过后保持 pending_review 并记录 approvals[0]（审计 result=first_approved），
+    第二名不同审核人通过才发布；D1 公开文档单人即过。驳回单人生效。
     """
     doc = _get_or_fail(doc_id)
     if doc["status"] != "pending_review":
         raise ValueError(f"文档当前状态 {doc['status']} 不在审核中")
-    doc["reviewed_by"] = by
-    doc["reviewed_at"] = _now()
-    doc["review_note"] = note or ("通过" if approve else "驳回")
-    if approve:
+    if not approve:
+        doc["reviewed_by"] = by
+        doc["reviewed_at"] = _now()
+        doc["review_note"] = note or "驳回"
+        doc["approvals"] = []
+        doc["status"] = "rejected"
+    else:
+        approvals = list(doc.get("approvals", []))
+        if any(a["by"] == by for a in approvals):
+            raise ValueError("D2+ 知识放行需两名不同审核人复核，请由第二审核人操作")
+        if doc["classification"] in {"D2", "D3"}:
+            approvals.append({"by": by, "at": _now(), "note": note})
+            if len(approvals) < 2:
+                doc["approvals"] = approvals
+                doc["reviewed_by"] = by
+                doc["reviewed_at"] = _now()
+                doc["review_note"] = note or "通过（待第二审核人复核）"
+                await audit.record(
+                    "knowledge_review",
+                    tool="knowledge_store",
+                    params={"doc_id": doc_id, "approve": True},
+                    user_id=by or None,
+                    result="first_approved",
+                    detail=(
+                        f"知识文档「{doc['title']}」（{doc['classification']}）"
+                        f"第一复核通过（{by}），待第二审核人复核（PRD 5.6.4 双人复核）"
+                    ),
+                )
+                await _snapshot()
+                return dict(doc)
+        doc["approvals"] = approvals
+        doc["reviewed_by"] = by
+        doc["reviewed_at"] = _now()
+        doc["review_note"] = note or "通过"
         doc["status"] = "published"
         doc["published_at"] = _now()
         await _embed_doc(doc)
-        detail_text = "审核通过，已向量化入库"
+    if approve:
+        if doc["classification"] in {"D2", "D3"} and doc.get("approvals"):
+            signers = "、".join(a["by"] for a in doc["approvals"])
+            detail_text = f"审核通过，已向量化入库（双人复核：{signers}）"
+        else:
+            detail_text = "审核通过，已向量化入库"
     else:
-        doc["status"] = "rejected"
         detail_text = "审核驳回"
     await audit.record(
         "knowledge_review",
@@ -356,7 +397,9 @@ async def review(doc_id: str, *, approve: bool, by: str, note: str = "") -> dict
         params={"doc_id": doc_id, "approve": approve},
         user_id=by or None,
         result="approved" if approve else "rejected",
-        detail=f"知识文档「{doc['title']}」{detail_text}{('：' + note) if note else ''}",
+        detail=(
+            f"知识文档「{doc['title']}」{detail_text}{('：' + note) if note else ''}"
+        ),
     )
     await _snapshot()
     return dict(doc)

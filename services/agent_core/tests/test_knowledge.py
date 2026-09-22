@@ -91,7 +91,7 @@ async def _pub(
     uploaded_by: str = "E9001",
     source: str = "upload",
 ) -> dict[str, Any]:
-    """便捷入库：上传 → 提交 → 审核通过（缺省直达 published 已向量化）。"""
+    """便捷入库：上传 → 提交 → 审核通过（缺省直达 published 已向量化；D2+ 双人复核）。"""
     doc = await knowledge_store.upload(
         title=title,
         content=content,
@@ -103,7 +103,10 @@ async def _pub(
         source=source,
     )
     await knowledge_store.submit(doc["doc_id"], by=uploaded_by)
-    return await knowledge_store.review(doc["doc_id"], approve=True, by="E9002")
+    pub = await knowledge_store.review(doc["doc_id"], approve=True, by="E9002")
+    if pub["status"] != "published":  # D2+ 双人复核：第二审核人放行（PRD 5.6.4）
+        pub = await knowledge_store.review(doc["doc_id"], approve=True, by="E9003")
+    return pub
 
 
 # ---- 切片（PRD 9.5.2：按标题层级，单块 ≤500 字，保留文档路径元数据）----
@@ -171,7 +174,7 @@ async def test_state_machine_lifecycle() -> None:
     """状态机：发布后不可再提交/再审/更新；下线仅从 published；下线即检索失效。"""
     # 正文与 query 全等 → bigram cosine=1.0（检索行为确定性，不受阈值影响）
     doc = await _pub("周报规范", "周报规范")
-    assert doc["status"] == "published" and doc["reviewed_by"] == "E9002"
+    assert doc["status"] == "published" and doc["reviewed_by"] == "E9003"  # 第二复核人
     with pytest.raises(ValueError, match="不可提交"):
         await knowledge_store.submit(doc["doc_id"], by="u")
     with pytest.raises(ValueError, match="不在审核中"):
@@ -203,7 +206,9 @@ async def test_reject_then_revise_flow() -> None:
     assert updated["status"] == "draft" and updated["version"] == 2
     assert updated["chunks"][0]["section"] == "新报销制度"  # 重新切片
     await knowledge_store.submit(doc["doc_id"], by="E1001")
-    republished = await knowledge_store.review(doc["doc_id"], approve=True, by="E9002")
+    first = await knowledge_store.review(doc["doc_id"], approve=True, by="E9002")
+    assert first["status"] == "pending_review"  # D2 双人复核：第一核保持待复核
+    republished = await knowledge_store.review(doc["doc_id"], approve=True, by="E9003")
     assert republished["status"] == "published" and republished["version"] == 2
 
 
@@ -496,6 +501,11 @@ def test_api_group_lifecycle_and_search(client: TestClient, rsa_key: Any) -> Non
     reviewed = client.post(
         f"/knowledge/docs/{doc_id}/review", headers=headers, json={"approve": True}
     ).json()
+    assert reviewed["status"] == "pending_review"  # D2 双人复核：第一核
+    mgr2 = make_token(rsa_key, sub="E9002", dept="事业部A/信息科", roles=["knowledge_manager"])
+    reviewed = client.post(
+        f"/knowledge/docs/{doc_id}/review", headers=auth(mgr2), json={"approve": True}
+    ).json()
     assert reviewed["status"] == "published"
     emp = make_token(rsa_key, sub="E2001", dept="事业部A/销售科", roles=["employee"])
     res = client.post(
@@ -539,9 +549,14 @@ def test_api_session_deposit_and_cross_dept(client: TestClient, rsa_key: Any) ->
         == 403  # 跨科室管理员无审核权
     )
     sales_mgr = make_token(rsa_key, sub="E2000", dept="事业部A/销售科", roles=["dept_manager"])
+    first = client.post(
+        f"/knowledge/docs/{doc['doc_id']}/review", headers=auth(sales_mgr), json={"approve": True}
+    ).json()
+    assert first["status"] == "pending_review"  # D2 双人复核：第一核
+    sales_mgr2 = make_token(rsa_key, sub="E2002", dept="事业部A/销售科", roles=["dept_manager"])
     assert (
         client.post(
-            f"/knowledge/docs/{doc['doc_id']}/review", headers=auth(sales_mgr), json={"approve": True}
+            f"/knowledge/docs/{doc['doc_id']}/review", headers=auth(sales_mgr2), json={"approve": True}
         ).json()["status"]
         == "published"
     )
@@ -609,6 +624,8 @@ def test_api_d4_reject_update_and_deprecate(client: TestClient, rsa_key: Any) ->
     assert updated["version"] == 2 and updated["status"] == "draft"  # 回 draft 重审
     client.post(f"/knowledge/docs/{doc_id}/submit", headers=auth(mgr))
     client.post(f"/knowledge/docs/{doc_id}/review", headers=auth(mgr), json={"approve": True})
+    mgr2 = make_token(rsa_key, sub="E9002", dept="事业部A/信息科", roles=["knowledge_manager"])
+    client.post(f"/knowledge/docs/{doc_id}/review", headers=auth(mgr2), json={"approve": True})
     res = client.post(
         "/knowledge/search", headers=auth(emp), json={"query": "新规则"}
     ).json()
@@ -623,6 +640,8 @@ def test_api_stats_and_gaps(client: TestClient, rsa_key: Any) -> None:
     ).json()
     client.post(f"/knowledge/docs/{doc['doc_id']}/submit", headers=auth(mgr))
     client.post(f"/knowledge/docs/{doc['doc_id']}/review", headers=auth(mgr), json={"approve": True})
+    mgr2 = make_token(rsa_key, sub="E9002", dept="事业部A/信息科", roles=["knowledge_manager"])
+    client.post(f"/knowledge/docs/{doc['doc_id']}/review", headers=auth(mgr2), json={"approve": True})
     emp = make_token(rsa_key, sub="E2001", dept="事业部A/销售科", roles=["employee"])
     client.post("/knowledge/search", headers=auth(emp), json={"query": "考勤制度"})
     client.post("/knowledge/search", headers=auth(emp), json={"query": "食堂菜单 today"})

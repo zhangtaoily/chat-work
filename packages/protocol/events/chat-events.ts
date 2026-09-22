@@ -32,6 +32,17 @@ export interface ConfirmCardEvent {
   expires_at: number
 }
 
+/** 计划卡事件：Plan 模式执行计划（PRD 3.3，批准后恢复执行 PLAN P2.6） */
+export interface PlanCardEvent {
+  type: 'plan_card'
+  /** 计划令牌（复用 confirm_store，POST /confirmations/{token} 批准/拒绝） */
+  plan_token: string
+  /** 计划内容：skill_title + 步骤数组（tool/system/rw/requires_confirm） */
+  payload: Record<string, unknown>
+  /** 过期时间戳（毫秒） */
+  expires_at: number
+}
+
 /** 变更卡事件：草稿字段修改 diff（旧值删除线 → 新值，金额联动重算） */
 export interface DiffCardEvent {
   type: 'diff_card'
@@ -73,6 +84,7 @@ export type ChatEvent =
   | StageProgressEvent
   | DraftCardEvent
   | ConfirmCardEvent
+  | PlanCardEvent
   | DiffCardEvent
   | MaterialCandidatesEvent
   | DocWorkbenchEvent

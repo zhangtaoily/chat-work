@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}系统配置 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>系统配置 <span class="muted">（系统管理员，PRD 5.6.1）</span></h2>
+{% if msg %}<p><span class="tag ok">{{ msg }}</span></p>{% endif %}
+{% if err %}<p><span class="tag bad">{{ err }}</span></p>{% endif %}
+
+<div class="card">
+  <h3>功能开关 <span class="muted">（变更即时生效并落审计）</span></h3>
+  <table>
+    <tr><th>开关</th><th>说明</th><th>当前值</th><th>操作</th></tr>
+    {% for t in toggles %}
+    <tr>
+      <td><code>{{ t.key }}</code></td>
+      <td class="muted">{{ t.description }}</td>
+      <td>{% if t.value %}<span class="tag ok">开启</span>{% else %}<span class="tag bad">关闭</span>{% endif %}</td>
+      <td>
+        <form class="inline" method="post" action="/admin/syscfg/toggle">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="hidden" name="key" value="{{ t.key }}">
+          <button name="value" value="true" class="pri" {% if t.value %}disabled{% endif %}>开启</button>
+        </form>
+        <form class="inline" method="post" action="/admin/syscfg/toggle">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="hidden" name="key" value="{{ t.key }}">
+          <button name="value" value="false" class="danger" {% if not t.value %}disabled{% endif %}>关闭</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3>MCP 服务注册表</h3>
+  <form method="post" action="/admin/syscfg/mcp/probe" style="margin-bottom:8px;">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button class="pri">全部探活</button>
+    <span class="muted">GET {url}/health，超时 3s，结果回显在下方</span>
+  </form>
+  <table>
+    <tr><th>服务</th><th>地址</th><th>来源</th><th>注册人</th><th>注册时间</th></tr>
+    {% for m in mcp_servers %}
+    <tr>
+      <td><code>{{ m.name }}</code>{% if m.builtin %} <span class="tag">内置</span>{% endif %}</td>
+      <td>{{ m.url }}</td>
+      <td class="muted">{{ 'env 内置' if m.builtin else '网页注册' }}</td>
+      <td>{{ m.registered_by or '-' }}</td>
+      <td class="muted">{{ m.registered_at or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/admin/syscfg/mcp" style="margin-top:8px;">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input type="text" name="name" placeholder="服务名（小写字母开头）" required pattern="[a-z][a-z0-9_-]{0,31}">
+    <input type="text" name="url" placeholder="http(s):// 地址" size="36" required>
+    <button class="pri">注册 / 改址</button>
+  </form>
+</div>
+
+{% if probe_results %}
+<div class="card">
+  <h3>最近探活结果</h3>
+  <table>
+    <tr><th>服务</th><th>健康</th><th>HTTP</th><th>时延</th><th>错误</th></tr>
+    {% for r in probe_results %}
+    <tr>
+      <td><code>{{ r.name }}</code></td>
+      <td>{% if r.healthy %}<span class="tag ok">健康</span>{% else %}<span class="tag bad">不健康</span>{% endif %}</td>
+      <td class="muted">{{ r.status if r.status is not none else '-' }}</td>
+      <td class="muted">{{ (r.latency_ms ~ ' ms') if r.latency_ms is not none else '-' }}</td>
+      <td class="muted">{{ r.error or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>模型路由 <span class="muted">（只读，改配置走环境变量并重启）</span></h3>
+  <table>
+    <tr><th>通道</th><th>base_url</th><th>model</th><th>api_key</th></tr>
+    {% for k in ['llm', 'embedding'] %}
+    <tr>
+      <td>{{ {'llm': 'LLM 对话', 'embedding': 'Embedding 向量'}[k] }}</td>
+      <td><code>{{ model_route[k].base_url or '-' }}</code></td>
+      <td><code>{{ model_route[k].model }}</code></td>
+      <td class="muted">{{ model_route[k].api_key }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">{{ model_route.note }}</p>
+</div>
+{% endblock %}

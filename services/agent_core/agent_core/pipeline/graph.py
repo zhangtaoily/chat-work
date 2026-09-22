@@ -15,6 +15,11 @@ HITL 机制（PRD 4.1/8.7）：
 - 幂等键 {userId}_{sessionId}_{intentHash}_{draftVersion} 在 hitl 生成，
   随 tools/call 传递，mcp-oa 侧幂等兜底（重复提交返回同一单据编号）。
 
+三模式（PLAN P2.6，PRD 3.3）：hitl 按生效模式分流——请求级
+mode_override 覆盖技能默认 mode；plan 未批准先出执行计划卡
+（plan_card 挂起，批准后重进 hitl）；写路径无论什么模式挂确认卡
+（规则2 模式不豁免单步确认）；只读直接执行。
+
 业务系统接入（PLAN P2.1，PRD 6.1）：CRM 销售订单录入（唯一 CRM 写入技能，
 默认值链 + 多轮补问 + 大额审批流）、客户 360 / 跟单、ERP 库存 / 采购 / 凭证、
 WMS 出入库 / 预警；工具调用按 crm__ / erp__ / wms__ 前缀分流到对应 MCP 服务。
@@ -45,6 +50,7 @@ from agent_core.mcp_client.wms import call_wms_tool
 from agent_core.pipeline import permissions, rules, slots
 from agent_core.skills import store
 from agent_core.skills.registry import get_skill, match_skill
+from agent_core.workflow import store as workflow_store
 
 _STAGE_MESSAGES = {
     "intent": "正在识别意图…",
@@ -52,7 +58,7 @@ _STAGE_MESSAGES = {
     "extract": "正在提取参数并查询余额…",
     "validate": "正在校验表单…",
     "permission": "正在校验权限…",
-    "hitl": "正在生成确认卡…",
+    "hitl": "正在生成计划与确认卡…",
     "execute": "正在执行…",
     "format": "正在生成回复…",
 }
@@ -74,6 +80,9 @@ class ChatState(TypedDict, total=False):
     confirm_token: str | None  # 阶段5输出：HITL 待确认令牌
     confirmed: bool | None  # 恢复路径标记（POST /confirmations 置 True；
     # LangGraph 输入仅保留 schema 内字段，必须显式声明）
+    mode_override: str | None  # 请求级三模式临时切换（API /chat mode，PRD 3.3 规则1）
+    plan_pending: bool | None  # Plan 计划卡已发待批准（hitl 置位，format 区分终态文案）
+    plan_approved: bool | None  # Plan 计划批准标记（恢复路径置 True，写步骤随后挂确认卡）
     tool_call: dict[str, Any] | None  # 阶段5输出：待执行工具调用（含幂等键）
     tool_result: Any | None  # 阶段6输出：MCP tools/call 结果
     knowledge: dict[str, Any] | None  # RAG 注入结果（PRD 9.5.3：route 消歧命中 /
@@ -256,6 +265,11 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
 
     # CRM 销售订单录入（PLAN P2.1，PRD 6.1.1）：分段收集 + 客户匹配 + 默认值链
     if skill["name"] == "crm_sales_order_entry":
+        return await _crm_order_extract(state, skill, events)
+
+    # 跨系统编排（PLAN P2.6，PRD 6.3）：复用 CRM 订单抽取全链（客户匹配 +
+    # 默认值链产出编排 inputs 全字段），execute 阶段映射为 workflow 入参
+    if skill["name"] == "cross_system_order_flow":
         return await _crm_order_extract(state, skill, events)
 
     # 客户 360 视图：抽取客户关键词（补问轮挂起，点名后精确匹配）
@@ -574,6 +588,15 @@ async def validate_node(state: ChatState) -> dict[str, Any]:
     if skill["name"] == "crm_sales_order_entry":
         validation = _validate_crm_order(state.get("draft") or {}, skill)
         return {"validation": validation, "events": events}
+    # 跨系统编排：仅必填缺失校验（缺失触发补问；明细/联系人细节由
+    # workflow 步骤执行与 MCP 契约校验兜底）
+    if skill["name"] == "cross_system_order_flow":
+        draft = state.get("draft") or {}
+        missing = [f for f in skill["required_fields"] if f not in draft]
+        return {
+            "validation": {"missing_fields": missing, "errors": [], "passed": not missing},
+            "events": events,
+        }
     return {"validation": {"passed": True}, "events": events}
 
 
@@ -644,17 +667,97 @@ def _is_write_turn(skill: dict[str, Any], draft: dict[str, Any]) -> bool:
     return skill.get("rw") == "write"
 
 
+_SYSTEM_OF = {"oa": "OA", "bi": "BI", "crm": "CRM", "erp": "ERP", "wms": "WMS"}
+
+
+def _system_of(tool: str) -> str:
+    """工具前缀 → 业务系统名（计划卡展示「将调用哪些系统」）。"""
+    return _SYSTEM_OF.get(tool.split("__", 1)[0], "MCP")
+
+
+def _eff_mode(state: Mapping[str, Any]) -> str:
+    """生效模式（PRD 3.3 规则1）：请求级 mode_override 覆盖技能默认 mode。
+
+    技能未声明 mode 时按读写兜底（写技能 craft 保持现行 HITL，读技能 ask）。
+    """
+    override = state.get("mode_override")
+    if override:
+        return override
+    skill = state.get("skill") or {}
+    return skill.get("mode") or ("craft" if skill.get("rw") == "write" else "ask")
+
+
+def _plan_payload(state: Mapping[str, Any]) -> dict[str, Any]:
+    """计划卡展示快照（PRD 3.3 Plan：将调用哪些系统、读改哪些数据）。
+
+    步骤 = 读工具序列 + 写工具（写步骤 requires_confirm=True——规则2 模式
+    不豁免单步确认，批准计划后仍挂确认卡）。
+    """
+    skill = state.get("skill") or {}
+    steps: list[dict[str, Any]] = [
+        {
+            "seq": i,
+            "tool": tool,
+            "system": _system_of(tool),
+            "rw": "read",
+            "requires_confirm": False,
+        }
+        for i, tool in enumerate(skill.get("read_tools") or [], 1)
+    ]
+    if skill.get("write_tool"):
+        steps.append(
+            {
+                "seq": len(steps) + 1,
+                "tool": skill["write_tool"],
+                "system": _system_of(skill["write_tool"]),
+                "rw": "write",
+                "requires_confirm": True,
+            }
+        )
+    return {"skill_title": skill.get("title", ""), "mode": "plan", "steps": steps}
+
+
 async def hitl_node(state: ChatState) -> dict[str, Any]:
-    """阶段5 HITL：写入类→挂起等确认（confirm_token + 状态快照）；只读→直接执行。"""
+    """阶段5 HITL（PRD 3.3 三模式）：
+    - plan 未批准：先出执行计划卡挂起（批准后经恢复图重进本节点）；
+    - 写路径（craft 默认 / ask 强制规则2 / plan 已批准）：确认卡挂起；
+    - 只读（ask/craft 默认 / plan 已批准）：直接执行。
+    """
     events = [_stage("hitl")]
     skill = state.get("skill")
     validation = state.get("validation") or {"passed": True}
+    if not skill or not validation.get("passed"):
+        return {"events": events}
     if (
-        skill
-        and skill.get("write_tool")
-        and validation.get("passed")
-        and _is_write_turn(skill, state.get("draft") or {})
+        _eff_mode(state) == "plan"
+        and not state.get("plan_approved")
+        and (skill.get("read_tools") or skill.get("write_tool"))
     ):
+        # Plan 模式（PRD 3.3）：先出执行计划卡挂起，批准后从快照恢复——
+        # 写步骤重进本节点挂确认卡（规则2），只读步骤直接执行
+        token = uuid.uuid4().hex
+        snap = _snapshot(state)
+        snap["plan_pending"] = True
+        await confirm_store.set_token(token, {"state": snap})
+        expires_at = int(time.time() * 1000) + 10 * 60 * 1000
+        events.append(
+            {
+                "type": "plan_card",
+                "plan_token": token,
+                "payload": _plan_payload(state),
+                "expires_at": expires_at,
+            }
+        )
+        # 审计：计划卡签发（PRD 10）
+        await audit.record(
+            "plan_issued",
+            user_id=state.get("user_id"),
+            session_id=state.get("session_id"),
+            tool=skill.get("write_tool") or (skill.get("read_tools") or [None])[0],
+            params={"skill": skill["name"], "mode": "plan"},
+        )
+        return {"confirm_token": token, "plan_pending": True, "events": events}
+    if skill.get("write_tool") and _is_write_turn(skill, state.get("draft") or {}):
         # 幂等键：{userId}_{sessionId}_{intentHash}_{draftVersion}（PRD 8.7）
         # intentHash：表单技能按技能名（补问轮 intent 可能漂移）；
         # 行内审批按 目标条目+动作（不同待办互不冲突，同操作重试幂等命中）
@@ -993,6 +1096,9 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
             except McpToolError as exc:
                 return {"tool_result": {"error": str(exc)}, "events": events}
             return {"tool_result": result, "events": events}
+        # ---- P2.6 跨系统编排（PLAN P2.6，PRD 6.3）：workflow 域引用执行 ----
+        if skill and skill["name"] == "cross_system_order_flow":
+            return await _execute_workflow_skill(state, events)
         return {"tool_result": None, "events": events}
     # 写入执行：按工具前缀分流到对应 MCP 服务（crm__ → mcp-crm，其余 → mcp-oa）
     call = call_crm_tool if tool_call["name"].startswith("crm__") else call_oa_tool
@@ -1001,6 +1107,69 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
     except McpToolError as exc:
         result = {"error": str(exc)}
     return {"tool_result": result, "events": events}
+
+
+async def _execute_workflow_skill(
+    state: ChatState, events: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """跨系统编排技能执行（PLAN P2.6 p2-6c，PRD 6.3）：workflow 域三分形桥接。
+
+    技能经 workflow_id 引用官方编排（seed_official 幂等兜底，编排被删除后
+    自愈）；draft 按 CRM 录单同款映射为编排 inputs。返回分形对齐
+    workflow_store.execute：
+    - plan 未批准 → 签发计划卡（read_tools/write_tool 皆空 → hitl_node
+      直通，plan_card 在此签发；批准后经恢复图 plan_approved=True 重入）
+    - pending_confirm → 透传 workflow 确认卡事件（payload key "workflow"，
+      API confirm 端点按 key 分流恢复，规则2 模式不豁免单步确认）
+    - 终态 → tool_result=run（format 编排分支渲染 run 步骤明细）
+    """
+    wf = await workflow_store.seed_official()
+    draft = state.get("draft") or {}
+    inputs = {
+        "order_type": draft.get("order_type", {}).get("value", "standard"),
+        "customer_id": draft["customer_id"]["value"],
+        "contact": draft["contact"]["value"],
+        "address": draft.get("address", {}).get("value", ""),
+        "items": draft["items"]["value"],
+        "delivery_date": draft.get("delivery_date", {}).get("value", ""),
+        "payment_term": draft.get("payment_term", {}).get("value", "net30"),
+    }
+    res = await workflow_store.execute(
+        wf["id"],
+        inputs,
+        trigger="skill",
+        actor_auth=state.get("auth"),
+        user_id=state.get("user_id"),
+        session_id=state.get("session_id"),
+        mode=_eff_mode(state),  # 规则1：请求级 mode_override 传导至编排引擎
+        plan_approved=bool(state.get("plan_approved")),
+    )
+    if res["status"] == "plan":
+        token = uuid.uuid4().hex
+        snap = _snapshot(state)  # 快照含 draft：批准恢复后按同参重入执行
+        snap["plan_pending"] = True
+        await confirm_store.set_token(token, {"state": snap})
+        events.append(
+            {
+                "type": "plan_card",
+                "plan_token": token,
+                "payload": res["plan"],
+                "expires_at": int(time.time() * 1000) + 10 * 60 * 1000,
+            }
+        )
+        await audit.record(
+            "plan_issued",
+            user_id=state.get("user_id"),
+            session_id=state.get("session_id"),
+            tool="workflow",
+            params={"skill": "cross_system_order_flow", "workflow_id": wf["id"]},
+        )
+        return {"confirm_token": token, "plan_pending": True, "events": events}
+    if res["status"] == "pending_confirm":
+        events.extend(res["events"])
+        return {"confirm_token": res["confirm_token"], "events": events}
+    events.extend(res["events"])
+    return {"tool_result": res["run"], "events": events}
 
 
 def _balance_note(draft: dict[str, Any]) -> str:
@@ -1088,8 +1257,9 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
         if skill["name"] == "oa_leave_request":
             # 补问文案融入余额展示（PRD 5.2 示例）
             ask = _balance_note(state.get("draft") or {}) + ask
-        if skill["name"] == "crm_sales_order_entry":
-            # CRM 订单补问：候选客户/联系人列选项融入追问（PRD 6.1.1）
+        if skill["name"] in ("crm_sales_order_entry", "cross_system_order_flow"):
+            # CRM 订单补问：候选客户/联系人列选项融入追问（PRD 6.1.1；
+            # 编排技能复用同款文案）
             ask = _crm_ask_text(missing[0], state.get("draft") or {})
         events.append({"type": "final", "text": ask, "cards": []})
         return {"final": {"text": ask, "cards": []}, "events": events}
@@ -1098,6 +1268,11 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
     if errors:
         events.append({"type": "final", "text": "；".join(errors), "cards": []})
         return {"final": {"text": "；".join(errors), "cards": []}, "events": events}
+
+    if state.get("plan_pending") and not state.get("plan_approved"):
+        text = "已生成执行计划，请批准后执行（10 分钟内有效）。"
+        events.append({"type": "final", "text": text, "cards": []})
+        return {"final": {"text": text, "cards": []}, "events": events}
 
     if state.get("confirm_token") and not state.get("tool_result"):
         text = "已生成确认卡，请确认后提交（10 分钟内有效）。"
@@ -1328,6 +1503,22 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
         events.append({"type": "final", "text": text, "cards": cards})
         return {"final": {"text": text, "cards": cards}, "events": events}
 
+    # ---- P2.6 跨系统编排渲染（PLAN P2.6，PRD 6.3）：workflow run 终态 ----
+    if skill["name"] == "cross_system_order_flow" and isinstance(result, dict):
+        steps = result.get("steps") or []
+        status = result.get("status", "failed")
+        if status == "ok":
+            await slots.clear_pending(state["user_id"], state["session_id"])
+            head = "跨系统订单一条龙已完成："
+        elif status == "partial":
+            head = "编排部分执行（Ask 模式止步于写步骤）："
+        else:
+            head = "编排执行失败（写步骤幂等键兜底，可修正后重试）："
+        lines = [f"- 第 {s.get('seq')} 步 {s.get('tool')}：{s.get('detail', '')}" for s in steps]
+        text = "\n".join([head, *lines])
+        events.append({"type": "final", "text": text, "cards": [result]})
+        return {"final": {"text": text, "cards": [result]}, "events": events}
+
     if isinstance(result, dict) and "error" in result:
         events.append({"type": "final", "text": f"提交失败：{result['error']}", "cards": []})
         return {"final": {"text": f"提交失败：{result['error']}", "cards": []}, "events": events}
@@ -1383,6 +1574,23 @@ def build_resume_graph() -> StateGraph:  # type: ignore[type-arg]
     graph.add_node("execute", execute_node)
     graph.add_node("format", format_node)
     graph.add_edge(START, "execute")
+    graph.add_edge("execute", "format")
+    graph.add_edge("format", END)
+    return graph
+
+
+def build_plan_resume_graph() -> StateGraph:  # type: ignore[type-arg]
+    """Plan 计划批准恢复图（hitl → execute → format，PLAN P2.6 PRD 3.3）。
+
+    写步骤重进 hitl 挂确认卡（规则2 模式不豁免单步确认，形成两次
+    确认链）；只读步骤 hitl 直通后执行。
+    """
+    graph = StateGraph(ChatState)
+    graph.add_node("hitl", hitl_node)
+    graph.add_node("execute", execute_node)
+    graph.add_node("format", format_node)
+    graph.add_edge(START, "hitl")
+    graph.add_edge("hitl", "execute")
     graph.add_edge("execute", "format")
     graph.add_edge("format", END)
     return graph

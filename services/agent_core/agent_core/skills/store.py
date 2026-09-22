@@ -79,6 +79,7 @@ def _builtin_meta(name: str, skill: dict[str, Any]) -> dict[str, Any]:
         "reviewed_by": None,
         "reviewed_at": None,
         "review_note": "内置技能基线上架",
+        "approvals": [],
         "published_at": _now(),
         "stats": {"calls": 0, "success": 0, "failed": 0},
     }
@@ -169,6 +170,8 @@ async def restore() -> None:
         if raw:
             snap = json.loads(raw)
             _meta.update(snap.get("meta", {}))
+            for m in _meta.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
+                m.setdefault("approvals", [])
             _installs.update({u: set(v) for u, v in snap.get("installs", {}).items()})
             global _seq
             _seq = int(snap.get("seq", 0))
@@ -212,6 +215,7 @@ async def register(
         "reviewed_by": None,
         "reviewed_at": None,
         "review_note": None,
+        "approvals": [],
         "published_at": None,
         "stats": {"calls": 0, "success": 0, "failed": 0},
     }
@@ -239,6 +243,7 @@ async def submit(name: str, *, by: str, note: str = "") -> dict[str, Any]:
     global _seq
     meta["submitted_by"] = by
     meta["submitted_at"] = _now()
+    meta["approvals"] = []  # 重新评审清空历史批准（双人复核从零起算）
     if meta["rw"] == "write":
         _seq += 1
         meta["status"] = "in_review"
@@ -267,28 +272,74 @@ async def submit(name: str, *, by: str, note: str = "") -> dict[str, Any]:
 
 
 async def review(name: str, *, approve: bool, by: str, note: str = "") -> dict[str, Any]:
-    """安全评审（信息科 security_reviewer，PRD 5.6.1）：通过/驳回均留痕。"""
+    """安全评审（信息科 security_reviewer，PRD 5.6.1）：通过/驳回均留痕。
+
+    双人复核（PRD 5.6.4：技能评审通过需双人）：第一名安全评审员通过后
+    保持 in_review 并记录 approvals[0]（审计 result=first_approved），
+    第二名不同评审员通过才发布；驳回单人即生效并清空已积累的批准。
+    同一评审人重复通过拒绝（防自批自核）。
+    """
     _ensure()
     meta = _meta.get(name)
     if meta is None:
         raise ValueError(f"技能 {name} 未注册")
     if meta["status"] != "in_review":
         raise ValueError(f"技能 {name} 当前状态 {meta['status']} 不在评审中")
+    if not approve:
+        meta["reviewed_by"] = by
+        meta["reviewed_at"] = _now()
+        meta["review_note"] = note or "驳回"
+        meta["approvals"] = []
+        meta["status"] = "rejected"
+        await audit.record(
+            "skill_review",
+            tool="skill_store",
+            params={"skill": name, "review_id": meta["review_id"], "approve": False},
+            user_id=by or None,
+            result="rejected",
+            detail=f"评审单 {meta['review_id']} 驳回{('：' + note) if note else ''}",
+        )
+        await _snapshot()
+        return dict(meta)
+    if any(a["by"] == by for a in meta["approvals"]):
+        raise ValueError("技能评审通过需两名不同安全评审员复核，请由第二评审人操作")
+    meta["approvals"].append({"by": by, "at": _now(), "note": note})
     meta["reviewed_by"] = by
     meta["reviewed_at"] = _now()
-    meta["review_note"] = note or ("通过" if approve else "驳回")
-    if approve:
-        meta["status"] = "published"
-        meta["published_at"] = _now()
-    else:
-        meta["status"] = "rejected"
+    meta["review_note"] = note or "通过"
+    if len(meta["approvals"]) < 2:
+        meta["review_note"] = note or "通过（待第二评审人复核）"
+        await audit.record(
+            "skill_review",
+            tool="skill_store",
+            params={"skill": name, "review_id": meta["review_id"], "approve": True},
+            user_id=by or None,
+            result="first_approved",
+            detail=(
+                f"评审单 {meta['review_id']} 第一复核通过（{by}），"
+                "待第二评审人复核（PRD 5.6.4 双人复核）"
+            ),
+        )
+        await _snapshot()
+        return dict(meta)
+    meta["status"] = "published"
+    meta["published_at"] = _now()
     await audit.record(
         "skill_review",
         tool="skill_store",
-        params={"skill": name, "review_id": meta["review_id"], "approve": approve},
+        params={
+            "skill": name,
+            "review_id": meta["review_id"],
+            "approve": True,
+            "signers": [a["by"] for a in meta["approvals"]],
+        },
         user_id=by or None,
-        result="approved" if approve else "rejected",
-        detail=f"评审单 {meta['review_id']} {'通过' if approve else '驳回'}{('：' + note) if note else ''}",
+        result="approved",
+        detail=(
+            f"评审单 {meta['review_id']} 双人复核通过"
+            f"（{'、'.join(a['by'] for a in meta['approvals'])}）"
+            f"{('：' + note) if note else ''}"
+        ),
     )
     await _snapshot()
     return dict(meta)

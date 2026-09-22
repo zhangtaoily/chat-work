@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}知识库审核 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>知识库审核 <span class="muted">（D2+ 双人复核 / D1 单人即过，PRD 5.6.4）</span></h2>
+{% if msg %}<p><span class="tag ok">{{ msg }}</span></p>{% endif %}
+{% if err %}<p><span class="tag bad">{{ err }}</span></p>{% endif %}
+<table>
+  <tr><th>文档</th><th>空间</th><th>密级</th><th>标签</th><th>来源</th><th>上传人</th><th>复核进度</th><th>操作</th></tr>
+  {% for it in items %}
+  <tr>
+    <td><strong>{{ it.title }}</strong><br><span class="muted">{{ it.doc_id }} · v{{ it.version }}</span></td>
+    <td>{{ {'group': '集团', 'dept': '科室'}.get(it.space, it.space) }}
+      {% if it.space == 'dept' %}<br><span class="muted">{{ it.dept_scope }}</span>{% endif %}
+    </td>
+    <td>
+      <span class="tag {{ 'ok' if it.classification == 'D1' else 'warn' }}">{{ it.classification }}</span>
+      {% if it.classification == 'D1' %}<div class="muted">单人即过</div>{% endif %}
+    </td>
+    <td>{% for t in it.get('tags', []) %}<span class="tag">{{ t }}</span> {% endfor %}</td>
+    <td class="muted">{{ it.source }}</td>
+    <td>{{ it.uploaded_by }}</td>
+    <td>
+      {{ it.get('approvals', []) | length }}{% if it.classification != 'D1' %}/2{% endif %}
+      {% for a in it.get('approvals', []) %}<div class="muted">{{ a.by }}</div>{% endfor %}
+    </td>
+    <td>
+      <form class="inline" method="post" action="/admin/knowledge/{{ it.doc_id }}/decision">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="approve">
+        <input type="text" name="note" placeholder="审核意见（可空）" size="14">
+        <button class="pri">通过</button>
+      </form>
+      <form class="inline" method="post" action="/admin/knowledge/{{ it.doc_id }}/decision">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="reject">
+        <input type="text" name="note" placeholder="驳回原因" size="14" required>
+        <button class="danger">驳回</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">暂无待审核文档</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

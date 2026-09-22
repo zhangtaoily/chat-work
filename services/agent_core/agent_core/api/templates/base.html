@@ -1,0 +1,57 @@
+{# 管理后台公共骨架（PLAN P2.7，PRD 5.6）：导航 / 用户身份 / no-store 由中间件统一注入 #}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Chat-Work 管理后台{% endblock %}</title>
+  <style>
+    :root { --line: #e2e5ea; --ink: #1c2330; --muted: #66707f; --accent: #2456c8; --bad: #b3261e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.6 "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--ink); background: #f6f7f9; }
+    header { background: #fff; border-bottom: 1px solid var(--line); padding: 0 24px; }
+    .bar { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 20px; height: 52px; }
+    .brand { font-weight: 700; color: var(--accent); white-space: nowrap; }
+    nav a { color: var(--muted); text-decoration: none; padding: 4px 2px; }
+    nav a:hover, nav a.on { color: var(--accent); font-weight: 600; }
+    .me { margin-left: auto; color: var(--muted); white-space: nowrap; }
+    main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: #fafbfc; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; background: #eef1f6; color: var(--muted); font-size: 12px; }
+    .tag.ok { background: #e5f3e8; color: #1d6b2e; }
+    .tag.warn { background: #fdf1e2; color: #9a5b00; }
+    .tag.bad { background: #fbe9e7; color: var(--bad); }
+    button, .btn { font: inherit; padding: 5px 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; color: var(--ink); text-decoration: none; display: inline-block; }
+    button.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger { background: #fff; border-color: var(--bad); color: var(--bad); }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+    .muted { color: var(--muted); }
+    form.inline { display: inline; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="brand">Chat-Work 管理后台</span>
+    <nav>
+      <a href="/admin/reviews" class="{{ 'on' if nav == 'reviews' }}">技能评审</a>
+      <a href="/admin/knowledge" class="{{ 'on' if nav == 'knowledge' }}">知识库审核</a>
+      <a href="/admin/automation" class="{{ 'on' if nav == 'automation' }}">自动化治理</a>
+      <a href="/admin/syscfg" class="{{ 'on' if nav == 'syscfg' }}">系统配置</a>
+      <a href="/admin/audit" class="{{ 'on' if nav == 'audit' }}">审计日志</a>
+    </nav>
+    <span class="me">{{ user_id }}（{{ dept or '-' }} · {{ roles|join('、') }}）
+      <form class="inline" method="post" action="/admin/logout">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button type="submit">登出</button>
+      </form>
+    </span>
+  </div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

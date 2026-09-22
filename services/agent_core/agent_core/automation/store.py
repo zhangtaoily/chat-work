@@ -6,11 +6,14 @@
 
 MVP 范围（用户确认）：
 - 后端自动化闭环：任务 CRUD + 进程内调度 + 以创建者身份执行（复用
-  graph 权限管线）+ 执行历史 + 结果信箱（wecom 推送留接口，PRD 14
-  章企微机器人规范未定）
+  graph 权限管线）+ 执行历史 + 结果通知双通道（PLAN P2.6 p2-6e，
+  PRD 14 章：wecom_bot 企微群机器人 + 进程内信箱降级）
 - 仅只读技能可自动化：绑定 write 技能创建任务直接拒绝——无人值守
   不写入（PRD 3.6.2 禁 Craft 的延伸），HITL 确认卡无人处理会挂起
-- 事件触发留 P2.6 跨系统编排（PRD 3.6.1）
+- 事件触发（PLAN P2.6 p2-6d，PRD 3.6.1）：订阅系统事件名（如
+  workflow.run.finished），事件经手动 fire API 或系统内部 publish 入队，
+  轮询检查器消费并执行匹配任务；节流窗口 interval_minutes 兜底
+  （默认 15 分钟，同 PRD 3.6.2 防护栏），手动 fire 仅命中本人任务
 
 任务结构（PRD 3.6.2，MVP 简化为单调度规则）：
     {id: auto_{seq:06d}, name, skill, params(draft 形态，直跳 validate),
@@ -20,7 +23,8 @@ MVP 范围（用户确认）：
 
 调度规则（PRD 3.6.2 调度表）：daily（days=["workday"] 仅工作日）/
 weekly（days 0-6，0=周一）/ monthly（days 1-31）/ once（at ISO
-datetime）；event 留 P2.6。
+datetime）/ event（event_name 订阅事件 + interval_minutes 节流窗口，
+PLAN P2.6 p2-6d）。
 
 防护栏（PRD 3.6.2）：单任务最小触发间隔 15 分钟（显式 interval_minutes
 校验，四种调度类型天然 ≥1 天）；单用户 active 任务 ≤3；单次执行超时
@@ -46,13 +50,14 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from agent_core import audit
+from agent_core import audit, wecom
 
 _SNAPSHOT_KEY = "automation:snapshot"
 
 _TZ = ZoneInfo("Asia/Shanghai")  # 调度语义为北京时间（每日 09:00 等）
 _STATUSES = ("active", "paused")
-_SCHEDULE_TYPES = ("daily", "weekly", "monthly", "once")
+_SCHEDULE_TYPES = ("daily", "weekly", "monthly", "once", "event")
+_POLL_INTERVAL_S = 60  # event 轮询检查器周期（PLAN P2.6 p2-6d）
 _MIN_INTERVAL_MIN = 15  # 防护栏：单任务最小触发间隔
 _MAX_ACTIVE_PER_USER = 3  # 防护栏：单用户同时活跃任务上限
 _MAX_FAILURES = 3  # 防护栏：连续失败自动暂停阈值
@@ -65,6 +70,8 @@ _MONTH_DAYS = frozenset(range(1, 32))
 _tasks: dict[str, dict[str, Any]] = {}
 _history: list[dict[str, Any]] = []
 _inbox: list[dict[str, Any]] = []
+_pending_events: list[dict[str, Any]] = []  # 待消费事件队列（瞬时，不入快照）
+_event_lock = asyncio.Lock()  # 事件消费互斥（手动 fire 与轮询检查器并发）
 _seq = 0  # 任务号自增（auto-*）
 _msg_seq = 0  # 信箱消息号自增
 _redis_client: Any = None
@@ -121,11 +128,12 @@ async def restore() -> None:
 
 
 def reset() -> None:
-    """清空全部任务/历史/信箱（测试隔离用）。"""
+    """清空全部任务/历史/信箱/待消费事件（测试隔离用）。"""
     global _seq, _msg_seq
     _tasks.clear()
     _history.clear()
     _inbox.clear()
+    _pending_events.clear()
     _seq = 0
     _msg_seq = 0
 
@@ -139,9 +147,7 @@ def validate_schedule(schedule: dict[str, Any]) -> None:
         raise ValueError("schedule 必须是对象")  # noqa: TRY004 - 统一 ValueError→API 400
     stype = schedule.get("type")
     if stype not in _SCHEDULE_TYPES:
-        raise ValueError(
-            f"schedule.type 仅支持 {'/'.join(_SCHEDULE_TYPES)}（event 触发留 P2.6）"
-        )
+        raise ValueError(f"schedule.type 仅支持 {'/'.join(_SCHEDULE_TYPES)}")
     if stype == "once":
         at = schedule.get("at")
         if not at:
@@ -150,6 +156,9 @@ def validate_schedule(schedule: dict[str, Any]) -> None:
             datetime.fromisoformat(str(at))
         except ValueError as exc:
             raise ValueError(f"at 不是合法时间：{at}") from exc
+    elif stype == "event":
+        if not str(schedule.get("event_name") or "").strip():
+            raise ValueError("event 调度必须提供 event_name（订阅的系统事件名）")
     else:
         t = schedule.get("time")
         if not t or not _TIME_RE.match(str(t)):
@@ -195,6 +204,8 @@ def next_run_time(
         base = base.replace(tzinfo=_TZ)
     else:
         base = base.astimezone(_TZ)
+    if stype == "event":
+        return None  # 事件驱动无固定触发时间（next_run_at 恒为 None）
     if stype == "once":
         at = datetime.fromisoformat(str(schedule["at"]))
         if at.tzinfo is None:
@@ -309,7 +320,8 @@ async def create(
     """创建自动化任务（PRD 3.6.2）：防线校验 → 注册 job → 审计/快照。
 
     防线：技能存在且已上架；write 技能直接拒绝（无人值守不写入）；
-    调度规则合法；once 时间不得已过期；单用户 active 任务 ≤3。
+    调度规则合法；推送渠道合法（inbox/wecom_bot）；once 时间不得已过期；
+    单用户 active 任务 ≤3。
     """
     if not str(name).strip():
         raise ValueError("任务名称不能为空")
@@ -328,6 +340,9 @@ async def create(
     ):
         raise ValueError("params 必须是 {field: {value, source}} 草稿形态")
     validate_schedule(schedule)
+    push = (channel or {}).get("push", "inbox")
+    if push not in ("inbox", "wecom_bot"):
+        raise ValueError(f"push 渠道仅支持 inbox/wecom_bot（当前 {push}）")
     if schedule["type"] == "once" and next_run_time(schedule) is None:
         raise ValueError("once 执行时间已过期")
     active = [t for t in _tasks.values() if t["owner"] == owner and t["status"] == "active"]
@@ -341,7 +356,8 @@ async def create(
         "skill": skill,
         "params": deepcopy(params),
         "schedule": deepcopy(schedule),
-        # push 渠道：MVP 仅 inbox；wecom_bot/chatwork_session 留 PRD 14 章确认
+        # push 渠道（PLAN P2.6 p2-6e，PRD 14 章）：inbox 信箱 / wecom_bot
+        # 企微群机器人（WECOM_WEBHOOK_URL 未配置时 _deliver 自动降级信箱）
         "channel": channel or {"push": "inbox", "format": "markdown"},
         "perm_mode": "ask",
         "owner": owner,
@@ -585,11 +601,14 @@ async def record_run(
 
 
 async def _deliver(task: dict[str, Any], *, kind: str, ok: bool, text: str) -> None:
-    """投递信箱消息（创建者收件）。
+    """投递通知（创建者收件）。
 
-    wecom 推送留接口（PRD 14 章企微机器人规范未定）：channel.push 为
-    wecom_bot/chatwork_session 时此处按渠道分流，MVP 全部落进程内信箱。
+    双通道（PLAN P2.6 p2-6e，PRD 14 章）：channel.push 为 wecom_bot 且
+    WECOM_WEBHOOK_URL 已配置时推企微群机器人；未配置或推送失败降级
+    进程内信箱（零依赖默认值，通知不丢）。
     """
+    if (task.get("channel") or {}).get("push") == "wecom_bot" and await wecom.push_markdown(text):
+        return
     global _msg_seq
     _msg_seq += 1
     _inbox.append(
@@ -606,6 +625,106 @@ async def _deliver(task: dict[str, Any], *, kind: str, ok: bool, text: str) -> N
             "read": False,
         }
     )
+
+
+# ---- 事件触发（PLAN P2.6 p2-6d，PRD 3.6.1：订阅系统事件 → 触发技能）----
+
+
+def publish_event(event_name: str, *, payload: dict[str, Any] | None = None) -> None:
+    """系统内部发布事件（workflow 终态等）：入队由轮询检查器消费。
+
+    同步无 IO（仅 append），事件源调用方不应被阻塞；队列瞬时
+    （不入快照，进程重启丢失可接受，与调度器进程内语义一致）。
+    """
+    name = str(event_name).strip()
+    if name:
+        _pending_events.append(
+            {"event": name, "payload": dict(payload or {}), "fired_at": _now(), "by": None}
+        )
+
+
+async def fire_event(
+    event_name: str,
+    *,
+    payload: dict[str, Any] | None = None,
+    by: str | None = None,
+    owner: str | None = None,
+) -> dict[str, Any]:
+    """手动触发事件（API fire 入口）：立即消费并执行匹配任务。
+
+    owner 限定命中范围（普通用户仅自己的任务，管理员传 None 触发
+    全部）——事件广播语义下防止普通用户触发他人任务；系统内部事件
+    （publish_event 入队）不受此限。
+    """
+    name = str(event_name).strip()
+    if not name:
+        raise ValueError("event 不能为空")
+    evt = {"event": name, "payload": dict(payload or {}), "fired_at": _now(), "by": by}
+    matched = await _consume_events([evt], owner=owner)
+    await audit.record(
+        "automation_event_fired",
+        tool="automation",
+        params={"event": name, "matched": [t["id"] for t in matched]},
+        user_id=by,
+        result="ok",
+        detail=f"手动触发事件「{name}」，命中 {len(matched)} 个任务",
+    )
+    return {
+        "event": name,
+        "matched": [{"id": t["id"], "name": t["name"], "skill": t["skill"]} for t in matched],
+    }
+
+
+async def _poll_events() -> None:
+    """轮询检查器（apscheduler interval job）：消费待处理事件队列。"""
+    if not _pending_events:
+        return
+    async with _event_lock:
+        events, _pending_events[:] = _pending_events[:], []  # 原子取出
+    if events:
+        await _consume_events(events, owner=None)
+
+
+async def _consume_events(
+    events: list[dict[str, Any]], *, owner: str | None
+) -> list[dict[str, Any]]:
+    """事件匹配 → 节流检查 → 执行（fire 与轮询检查器的共同入口）。
+
+    节流（PRD 3.6.2 防护栏）：距上次执行不足 interval_minutes（默认
+    15 分钟）跳过并审计；同一事件批量只执行一次（去重）。
+    """
+    matched: list[dict[str, Any]] = []
+    for task in _tasks.values():
+        if task["status"] != "active" or task["schedule"]["type"] != "event":
+            continue
+        if owner is not None and task["owner"] != owner:
+            continue
+        if task["schedule"]["event_name"] not in {str(e.get("event")) for e in events}:
+            continue
+        if not _in_effective_range(task["schedule"]):
+            continue
+        window = int(task["schedule"].get("interval_minutes") or _MIN_INTERVAL_MIN)
+        last = task.get("last_run_at")
+        if last:
+            try:
+                elapsed_min = (
+                    datetime.now(UTC) - datetime.fromisoformat(str(last))
+                ).total_seconds() / 60
+            except ValueError:
+                elapsed_min = None
+            if elapsed_min is not None and elapsed_min < window:
+                await audit.record(
+                    "automation_event_throttled",
+                    tool="automation",
+                    params={"task_id": task["id"], "event": task["schedule"]["event_name"]},
+                    user_id=task["owner"],
+                    result="skipped",
+                    detail=f"距上次执行 {elapsed_min:.0f} 分钟，不足节流窗口 {window} 分钟，跳过",
+                )
+                continue
+        matched.append(task)
+        await run_once(task["id"])
+    return matched
 
 
 # ---- apscheduler 封装（AsyncIOScheduler 由 API lifespan 启停）----
@@ -637,6 +756,8 @@ def _job_trigger(schedule: dict[str, Any]) -> Any:
 def _sync_job(task: dict[str, Any]) -> None:
     """按任务当前状态同步 job：active 且有下次触发 → 注册，否则移除。"""
     if _scheduler is None:
+        # 调度器未启动（syscfg 功能开关 automation.scheduler_enabled 关闭，
+        # PLAN P2.7）：不挂 job，重开开关时 start_scheduler 统一补挂
         return
     _remove_job(task["id"])
     if task["status"] != "active":
@@ -664,14 +785,32 @@ def _remove_job(task_id: str) -> None:
 
 
 def start_scheduler() -> None:
-    """API lifespan 启动调度器并按当前任务集注册 job（restore 之后调用）。"""
+    """API lifespan 启动调度器并按当前任务集注册 job（restore 之后调用）。
+
+    受 syscfg 功能开关 automation.scheduler_enabled 控制（PLAN P2.7）：
+    关闭时不启动，syscfg.set_toggle 重开时由此入口补启。
+    """
     global _scheduler
     if _scheduler is not None:
         return
+    from agent_core import syscfg
+
+    if not syscfg.get_toggle("automation.scheduler_enabled"):
+        return
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.interval import IntervalTrigger
 
     sched = AsyncIOScheduler(timezone=str(_TZ))
     sched.start()
+    # event 轮询检查器（PLAN P2.6 p2-6d）：周期消费 publish 入队的系统事件
+    sched.add_job(
+        _poll_events,
+        IntervalTrigger(seconds=_POLL_INTERVAL_S),
+        id="__event_poll__",
+        name="automation:event_poll",
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler = sched
     for task in _tasks.values():
         _sync_job(task)

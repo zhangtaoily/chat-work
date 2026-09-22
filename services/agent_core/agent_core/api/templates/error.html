@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}出错 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>无法继续</h2>
+  <p>{{ message }}</p>
+  <p class="muted">会话 30 分钟无操作自动锁定；如持续出错请联系系统管理员（PRD 5.6.4）。</p>
+  <a class="btn" href="/admin/login">重新登录</a>
+</div>
+{% endblock %}

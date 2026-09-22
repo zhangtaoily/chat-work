@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}自动化治理 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>自动化治理 <span class="muted">（任务总览 / 熔断暂停，PRD 5.6.2）</span></h2>
+{% if msg %}<p><span class="tag ok">{{ msg }}</span></p>{% endif %}
+{% if err %}<p><span class="tag bad">{{ err }}</span></p>{% endif %}
+<div class="card">
+  调度器总开关 <code>automation.scheduler_enabled</code>：
+  {% if scheduler_enabled %}<span class="tag ok">开启</span>{% else %}<span class="tag bad">关闭（任务暂停触发）</span>{% endif %}
+  <span class="muted">— {% if is_system_admin %}可在<a href="/admin/syscfg">系统配置</a>页切换{% else %}仅系统管理员可切换{% endif %}</span>
+</div>
+<table>
+  <tr><th>任务</th><th>技能</th><th>归属</th><th>状态</th><th>调度</th><th>运行统计</th><th>下次触发</th><th>操作</th></tr>
+  {% for it in items %}
+  <tr>
+    <td><strong>{{ it.name }}</strong><br><span class="muted">{{ it.id }}</span></td>
+    <td><code>{{ it.skill }}</code></td>
+    <td>{{ it.owner }} <span class="tag">{{ {'personal': '个人', 'dept': '科室'}.get(it.scope, it.scope) }}</span></td>
+    <td>
+      {% if it.status == 'active' %}<span class="tag ok">运行中</span>
+      {% elif it.status == 'paused' %}<span class="tag warn">已暂停</span>
+      {% elif it.status == 'failed' %}<span class="tag bad">失败暂停（{{ it.failure_count }} 次）</span>
+      {% else %}<span class="tag">{{ it.status }}</span>{% endif %}
+    </td>
+    <td class="muted">
+      {{ it.schedule.type }}
+      {% if it.schedule.type == 'once' %}· {{ it.schedule.at }}
+      {% elif it.schedule.type == 'event' %}· {{ it.schedule.get('event_name', '') }}
+      {% else %}· {{ it.schedule.time }}{% if it.schedule.days %}（{{ it.schedule.days | join(',') }}）{% endif %}{% endif %}
+    </td>
+    <td class="muted">跑 {{ it.stats.runs }} / 成 {{ it.stats.success }} / 败 {{ it.stats.failed }}</td>
+    <td class="muted">{{ it.next_run_at or '-' }}</td>
+    <td>
+      {% if it.status == 'active' %}
+      <form class="inline" method="post" action="/admin/automation/{{ it.id }}/status">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="pause">
+        <button class="danger">暂停</button>
+      </form>
+      {% elif it.status in ('paused', 'failed') %}
+      <form class="inline" method="post" action="/admin/automation/{{ it.id }}/status">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="resume">
+        <button class="pri">恢复</button>
+      </form>
+      {% else %}<span class="muted">-</span>{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">暂无自动化任务</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

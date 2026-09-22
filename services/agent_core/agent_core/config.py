@@ -72,5 +72,11 @@ class Settings:
         """HITL 确认卡 TTL（PRD 8.7：10 分钟）。"""
         return int(env("CONFIRM_TTL_SECONDS", "600"))
 
+    @property
+    def wecom_webhook_url(self) -> str | None:
+        """WECOM_WEBHOOK_URL：企微群机器人 webhook（PRD 14 章）；未配置时
+        wecom 推送降级进程内信箱（PLAN P2.6 p2-6e，零依赖默认值）。"""
+        return env("WECOM_WEBHOOK_URL") or None
+
 
 settings = Settings()

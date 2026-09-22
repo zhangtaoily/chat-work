@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}技能评审 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>技能评审 <span class="muted">（安全评审员 · 双人复核，PRD 5.6.4）</span></h2>
+{% if msg %}<p><span class="tag ok">{{ msg }}</span></p>{% endif %}
+{% if err %}<p><span class="tag bad">{{ err }}</span></p>{% endif %}
+<table>
+  <tr><th>技能</th><th>标题</th><th>分类</th><th>读写</th><th>状态</th><th>复核进度</th><th>评审单</th><th>操作</th></tr>
+  {% for it in items %}
+  <tr>
+    <td><code>{{ it.name }}</code><br><span class="muted">v{{ it.version }}</span></td>
+    <td>{{ it.title }}</td>
+    <td>{{ it.category }}</td>
+    <td><span class="tag {{ 'warn' if it.rw == 'write' }}">{{ it.rw }}</span></td>
+    <td>
+      {% if it.status == 'published' %}<span class="tag ok">已发布</span>
+      {% elif it.status == 'in_review' %}<span class="tag warn">评审中</span>
+      {% elif it.status == 'rejected' %}<span class="tag bad">已驳回</span>
+      {% else %}<span class="tag">{{ it.status }}</span>{% endif %}
+    </td>
+    <td>
+      {{ it.get('approvals', []) | length }}/2
+      {% for a in it.get('approvals', []) %}<div class="muted">{{ a.by }}</div>{% endfor %}
+    </td>
+    <td class="muted">{{ it.get('review_id') or '-' }}</td>
+    <td>
+      {% if it.status == 'in_review' %}
+      <form class="inline" method="post" action="/admin/reviews/{{ it.name }}/decision">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="approve">
+        <input type="text" name="note" placeholder="复核意见（可空）" size="14">
+        <button class="pri">通过</button>
+      </form>
+      <form class="inline" method="post" action="/admin/reviews/{{ it.name }}/decision">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="action" value="reject">
+        <input type="text" name="note" placeholder="驳回原因" size="14" required>
+        <button class="danger">驳回</button>
+      </form>
+      {% else %}<span class="muted">-</span>{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">暂无技能</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -32,7 +32,20 @@ P2.5 知识库（PLAN P2.5，PRD 9.5）：
 - knowledge_tags：技能绑定知识标签——extract 缺字段时注入填写说明（注入点2）、
   execute 成功后注入 SOP/规范引用（注入点4），tags 与知识文档 tags 匹配
 
+P2.6 跨系统编排（PLAN P2.6，PRD 6.3）：
+- cross_system_order_flow  跨系统订单一条龙（经 workflow 域 workflow_id
+  引用官方编排执行：CRM 下单 → 审批进度 → WMS 备货参考 → 通知业务员；
+  read_tools/write_tool 皆空 → hitl 直通，计划卡/确认卡由 execute 分支
+  调 workflow 引擎签发，写步骤确认卡 payload key 为 "workflow"）
+
 技能优先：intent 命中技能 → 用技能编排工具；未命中降级闲聊兜底。
+
+三模式（PLAN P2.6，PRD 3.3）：mode 为技能默认运行模式——ask 只读无
+确认卡 / plan 先出执行计划卡批准后执行 / craft 表单确认卡 HITL 后立即
+执行。内置技能映射：写技能（含行内审批）craft（现行 HITL 行为）、读
+技能 ask。请求级临时切换经 ChatState.mode_override 覆盖（API /chat
+mode 参数）；规则2：写入步骤无论什么模式强制 HITL（plan 批准后仍挂
+确认卡）；规则3：科室自定义技能 mode 仅 ask/plan（禁 craft）。
 
 权限元数据（PLAN P1.1，PRD 2.3）：required_roles 为写路径 any-of 角色
 （permission 节点消费）；读/查询路径放行，数据可见性由"本人范围"保证
@@ -46,6 +59,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "oa_leave_request",
         "title": "请假申请",
         "rw": "write",
+        "mode": "craft",  # 写技能默认 craft：表单确认卡 HITL 后执行（PRD 3.3）
         "required_roles": ["employee"],  # 全员可提交本人请假（写路径校验）
         "intent_patterns": ["请假", "年假", "调休", "病假", "事假", "婚假", "丧假", "产假"],
         "read_tools": ["oa__query_leave_balance"],  # extract 阶段填草稿 computed 字段
@@ -67,6 +81,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "oa_todo_approve",
         "title": "待办审批",
         "rw": "read",  # 默认读路径：列表查询直接执行
+        "mode": "craft",  # 行内审批含写动作，保持现行 HITL 行为（PRD 3.3）
         "intent_patterns": ["待办", "审批", "我的审批", "同意", "驳回", "批准", "否决"],
         "read_tools": ["oa__query_pending_approvals"],
         "write_tool": "oa__approve",  # 行内审批写入（HITL 确认后执行）
@@ -83,6 +98,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "bi_query",
         "title": "BI 数据查询",
         "rw": "read",  # 只读查询：直接执行，无 HITL（PRD 5.2 场景 3）
+        "mode": "ask",
         "intent_patterns": [
             "销售额",
             "销售",
@@ -103,6 +119,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "weekly_report",
         "title": "周报生成",
         "rw": "read",  # 只读聚合：OA 操作记录 → Markdown 草稿（PRD 5.2 场景 4）
+        "mode": "ask",
         "intent_patterns": ["周报", "写周报", "生成周报"],
         "read_tools": ["oa__query_activity_log"],
         "write_tool": None,
@@ -118,6 +135,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "crm_sales_order_entry",
         "title": "销售订单录入",
         "rw": "write",
+        "mode": "craft",  # 写技能默认 craft：表单确认卡 HITL 后执行（PRD 3.3）
         "required_roles": ["sales"],  # 写路径校验角色（销售岗才能下单）
         "intent_patterns": ["销售订单", "下订单", "录订单", "订单录入", "下单", "订货"],
         "read_tools": ["crm__search_customers", "crm__get_customer_360"],
@@ -135,6 +153,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "crm_customer_360",
         "title": "客户 360 视图",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": ["客户360", "客户信息", "客户档案", "客户视图", "查客户"],
         "read_tools": ["crm__search_customers", "crm__get_customer_360"],
         "write_tool": None,
@@ -148,6 +167,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "crm_order_track",
         "title": "订单跟单进度",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": ["跟单", "订单进度", "订单到哪了", "发货进度", "交期"],
         "read_tools": ["crm__query_order_progress"],
         "write_tool": None,
@@ -161,6 +181,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "erp_inventory_query",
         "title": "ERP 库存查询",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": ["库存", "现存量", "可用量", "缺料", "安全库存"],
         "read_tools": ["erp__query_inventory"],
         "write_tool": None,
@@ -172,6 +193,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "erp_po_sync",
         "title": "采购订单查询",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": ["采购单", "采购订单", "在途", "到货"],
         "read_tools": ["erp__query_purchase_orders"],
         "write_tool": None,
@@ -183,6 +205,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "erp_voucher_summary",
         "title": "财务凭证摘要",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": ["凭证", "记账", "借贷", "账务"],
         "read_tools": ["erp__query_voucher_summary"],
         "write_tool": None,
@@ -194,6 +217,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "wms_stock_alert",
         "title": "出入库与库存预警",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": ["出库单", "入库单", "出入库", "库存预警", "预警", "临期"],
         "read_tools": ["wms__query_stock_orders", "wms__query_stock_alerts"],
         "write_tool": None,
@@ -209,6 +233,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "prod_material_check",
         "title": "生产备料齐套检查",
         "rw": "read",
+        "mode": "ask",  # 科室技能仅 ask/plan（规则3：禁 craft，PRD 3.3）
         "dept_scope": "生产科",
         "intent_patterns": ["备料", "齐套", "领料", "生产缺料", "生产物料"],
         "read_tools": ["erp__query_inventory", "wms__query_stock_orders"],
@@ -221,6 +246,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "plan_inbound_view",
         "title": "计划物料到货视图",
         "rw": "read",
+        "mode": "ask",  # 科室技能仅 ask/plan（规则3：禁 craft，PRD 3.3）
         "dept_scope": "计划科",
         "intent_patterns": ["物料计划", "到货计划", "在途到货", "采购到货", "排产"],
         "read_tools": ["erp__query_purchase_orders", "erp__query_inventory"],
@@ -233,6 +259,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "qa_batch_trace",
         "title": "品管效期批次追溯",
         "rw": "read",
+        "mode": "ask",  # 科室技能仅 ask/plan（规则3：禁 craft，PRD 3.3）
         "dept_scope": "品管科",
         "intent_patterns": ["效期预警", "效期", "批次", "保质期", "批次追溯", "质量追溯"],
         "read_tools": ["wms__query_stock_alerts", "wms__query_stock_orders"],
@@ -245,6 +272,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "wh_stock_overview",
         "title": "仓库运营概览",
         "rw": "read",
+        "mode": "ask",  # 科室技能仅 ask/plan（规则3：禁 craft，PRD 3.3）
         "dept_scope": "仓库物流",
         "intent_patterns": ["仓库概览", "仓库库存", "仓储", "库房", "仓库动态"],
         "read_tools": ["erp__query_inventory", "wms__query_stock_alerts"],
@@ -257,6 +285,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "it_data_check",
         "title": "经营数据巡检",
         "rw": "read",
+        "mode": "ask",  # 科室技能仅 ask/plan（规则3：禁 craft，PRD 3.3）
         "dept_scope": "信息科",
         "intent_patterns": ["数据巡检", "数据核对", "经营速览", "数据质量"],
         "read_tools": ["bi__execute_query", "erp__query_voucher_summary"],
@@ -272,12 +301,34 @@ SKILLS: dict[str, dict[str, Any]] = {
         "name": "knowledge_qa",
         "title": "知识问答",
         "rw": "read",
+        "mode": "ask",
         "intent_patterns": [],
         "read_tools": [],
         "write_tool": None,
         "required_roles": [],
         "ask_messages": {},
         "required_fields": [],
+    },
+    # ---- P2.6 跨系统编排（PLAN P2.6，PRD 6.3）----
+    # 编排技能经 workflow_id 引用官方编排（独立 workflow 域），自身不持有
+    # 工具：extract 复用 CRM 订单抽取（客户匹配 + 默认值链产出 inputs 全
+    # 字段），required_fields 仅客户/联系人/明细（其余由默认值链兜底）
+    "cross_system_order_flow": {
+        "name": "cross_system_order_flow",
+        "title": "跨系统订单一条龙",
+        "rw": "write",  # permission 节点角色门禁兜底（workflow 引擎无角色矩阵）
+        "mode": "plan",  # PRD 6.3：Plan 模式先出执行计划卡批准后执行
+        "required_roles": ["sales"],  # 写路径校验角色（销售岗才能发起下单编排）
+        "intent_patterns": ["跨系统", "一条龙", "订单编排", "全流程下单", "跨系统下单"],
+        "read_tools": [],  # 皆空 → hitl_node 直通，计划卡由编排执行分支签发
+        "write_tool": None,
+        # 补问文案与 CRM 录单同口径（format 缺字段分支复用 _crm_ask_text）
+        "ask_messages": {
+            "customer_id": "请问是哪家客户？请提供客户名称，我来 CRM 匹配。",
+            "contact": "请问订单联系人是谁？（需为该客户在册联系人）",
+            "items": "请提供商品明细（如：SKU-A x10 单价 50）",
+        },
+        "required_fields": ["customer_id", "contact", "items"],
     },
 }
 

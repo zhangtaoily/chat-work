@@ -149,7 +149,7 @@ def test_schedule_validation_ok() -> None:
 @pytest.mark.parametrize(
     "schedule",
     [
-        {"type": "event"},  # 事件触发留 P2.6
+        {"type": "event"},  # event 缺 event_name（P2.6 后 event_name 必填）
         {"type": "hourly", "time": "09:00"},
         {"type": "daily", "time": "9:00"},  # 非 HH:MM
         {"type": "daily", "time": "25:00"},
@@ -218,7 +218,8 @@ async def test_create_rejects_write_skill(monkeypatch: pytest.MonkeyPatch) -> No
     _inject_registry(monkeypatch, "bulk_write")
     await skill_store.register(name="bulk_write", title="批量写入", rw="write", by="E1001")
     await skill_store.submit("bulk_write", by="E2002")
-    await skill_store.review("bulk_write", approve=True, by="SEC001")  # 已上架
+    await skill_store.review("bulk_write", approve=True, by="SEC001")  # 第一核
+    await skill_store.review("bulk_write", approve=True, by="SEC002")  # 双人复核后已上架
     with pytest.raises(ValueError, match="仅只读技能可自动化"):
         await _mk(skill="bulk_write")
 
@@ -422,11 +423,12 @@ def test_api_create_guards_400(
         headers=auth(token),
     )
     assert resp.status_code == 400 and "不存在" in resp.json()["detail"]
-    # write 技能（运行时定义注入 + 注册→提交→评审通过）
+    # write 技能（运行时定义注入 + 注册→提交→双人复核发布）
     _inject_registry(monkeypatch, "bulk_write")
     asyncio.run(skill_store.register(name="bulk_write", title="批量写入", rw="write", by="E1001"))
     asyncio.run(skill_store.submit("bulk_write", by="E2002"))
     asyncio.run(skill_store.review("bulk_write", approve=True, by="SEC001"))
+    asyncio.run(skill_store.review("bulk_write", approve=True, by="SEC002"))
     resp = client.post(
         "/automations",
         json={"name": "x", "skill": "bulk_write", "params": {}, "schedule": DAILY},
