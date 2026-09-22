@@ -1,0 +1,25 @@
+# APISIX 独立模式路由（P1.3，PLAN）：声明式，改动后 `docker compose restart apisix` 生效
+#
+# 路由设计（ARCHITECTURE 8.1）：
+# - /api/* → agent-core（strip /api 前缀）；JWT 验签由 agent-core 统一执行
+#   （RS256 + JWKS + jti 黑名单，PRD 8.5.7；网关侧重复验签需静态公钥、
+#    与 JWKS 轮换冲突，故不在网关做——zero-trust 边界在应用层）
+# - /mcp/oa/*、/mcp/bi/* 不对外暴露：MCP 仅 agent-core 内网直连，
+#   桌面端只经 /api/* 访问（最小攻击面）
+#
+# 注意：文件末尾 #ENDPOINT 为 APISIX 独立模式标记，勿删
+routes:
+  - uri: /api/*
+    upstream:
+      nodes:
+        "agent-core:8000": 1
+      type: roundrobin
+    plugins:
+      proxy-rewrite:
+        regex_uri: ["^/api/(.*)", "/$1"] # /api/chat → /chat
+      limit-count: # 粗粒度限流（PRD 10：防滥用）；细粒度配额在应用层
+        count: 600
+        time_window: 60
+        rejected_code: 429
+        key: remote_addr
+#ENDPOINT

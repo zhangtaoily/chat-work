@@ -1,0 +1,39 @@
+{
+  "name": "erp__query_purchase_orders",
+  "description": "查询 ERP 采购订单：供应商/数量/金额/预计到货/状态，支持在途过滤（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sku": {
+        "type": "string",
+        "title": "商品编码",
+        "description": "商品编码精确查询（如 SKU-C）"
+      },
+      "status": {
+        "type": "string",
+        "enum": ["draft", "approved", "in_transit", "received"],
+        "title": "采购状态",
+        "description": "draft=草稿 / approved=已审批 / in_transit=在途 / received=已入库；缺省返回全部"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20,
+        "title": "最多返回条数",
+        "description": "1-100，默认 20"
+      }
+    },
+    "required": []
+  },
+  "annotations": {
+    "title": "ERP 采购订单查询",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["erp:purchase:read"]
+    }
+  }
+}

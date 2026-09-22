@@ -1,0 +1,10 @@
+# APISIX 数据平面独立模式（standalone）：路由声明在 apisix.yaml，无需 etcd
+# 参考：https://apisix.apache.org/docs/apisix/deployment-modes/
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+apisix:
+  node_listen: [9080] # 宿主机 80 → 容器 9080（compose 映射）
+  enable_control: false

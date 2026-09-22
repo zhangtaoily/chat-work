@@ -1,20 +1,21 @@
 # MVP 单机部署（Docker Compose，ARCHITECTURE 8.1 服务清单）
-# 所有环境变量均为占位值：生产环境经 .env / 内网配置中心注入
+# 所有密钥均为占位值：生产环境经 .env / 内网配置中心注入（见 infra/README.md 环境变量清单）
+# SSO 对接真实 Keycloak（本 compose）：agent-core 经 SSO_ISSUER/SSO_JWKS_URI 校验 RS256 token
 name: chat-work
 
 services:
   # ── 接入层 ──────────────────────────────────────────────────────────
   apisix:
     image: apache/apisix:3.12.0-alpine
+    environment:
+      APISIX_STAND_ALONE: "true" # 独立模式：路由声明式（infra/apisix/apisix.yaml），无需 etcd
     ports:
       - "80:9080" # HTTP 入口（生产经 443/TLS 终结）
     volumes:
-      - apisix_data:/usr/local/apisix
+      - ../apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ../apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     depends_on:
-      - keycloak
-    # TODO: 路由 /api/* → agent-core、/mcp/* → 各 mcp server；
-    #       插件：jwt-verify（RS256 本地公钥验签）/ limit-count / audit-log
-    #       配置文件纳入 infra/apisix 版本化
+      - agent-core
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -22,67 +23,140 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin # 占位：生产改密
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin # 占位：生产改密
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak # Keycloak 专用库（占位）
-      KC_DB_USERNAME: keycloak # 占位
-      KC_DB_PASSWORD: keycloak # 占位
+      KC_DB: mysql # MySQL 8 优先（v1.6 决策；兼容 PG 见 4.6）
+      KC_DB_URL: jdbc:mysql://mysql:3306/keycloak # Keycloak 专用库（init/01-init.sql 建）
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak # 占位：生产改密
+      # start-dev 无 KC_HOSTNAME 时按请求 Host 构造 issuer：浏览器经 localhost:8081
+      # 登录 → token iss = http://localhost:8081/realms/chat-work，
+      # 与 agent-core SSO_ISSUER 一致（容器互访仅走 JWKS 覆盖，见下）
+    ports:
+      - "8081:8080" # 桌面端浏览器登录入口（loopback）
     volumes:
       - ../keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
 
   # ── 应用层（Python，每系统独立进程）─────────────────────────────────
   agent-core:
     build:
-      context: ../../services/agent_core # TODO: Dockerfile 待补（uv 同步依赖 + 非 root 运行）
+      context: ../../services/agent_core
       dockerfile: Dockerfile
     command: uvicorn agent_core.api.main:app --host 0.0.0.0 --port 8000 --workers 2
     environment:
-      DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/chatwork # 占位
-      REDIS_URL: redis://redis:6379/0 # 占位（会话记忆/权限缓存/车道队列）
+      DATABASE_URL: mysql+aiomysql://app:app@mysql:3306/chatwork # 占位（MySQL 8 优先，可切 PG）
+      REDIS_URL: redis://redis:6379/0 # HITL 确认/会话记忆/jti 黑名单共享（多 worker 必配，PRD 8.5.7）
       MILVUS_URI: http://milvus:19530 # 占位（记忆/知识向量）
-      LLM_BASE_URL: http://vllm:8000/v1 # 占位（vLLM OpenAI 兼容 API）
+      LLM_BASE_URL: http://vllm:8000/v1 # 占位（vLLM OpenAI 兼容 API；GPU 节点见 vllm 注释）
+      LLM_API_KEY: dummy # vLLM 不校验
+      LLM_MODEL: qwen2.5-32b-instruct
+      MCP_OA_URL: http://mcp-oa:8001 # client 自动拼 /mcp 路径
+      MCP_BI_URL: http://mcp-bi:8002
+      MCP_CRM_URL: http://mcp-crm:8003
+      MCP_ERP_URL: http://mcp-erp:8004
+      MCP_WMS_URL: http://mcp-wms:8005
+      SSO_REQUIRED: "true" # 生产强制鉴权（PRD 8.5）
+      SSO_ISSUER: http://localhost:8081/realms/chat-work # 桌面端视角 issuer（浏览器 Host）
+      SSO_AUDIENCE: chat-work-desktop
+      SSO_JWKS_URI: http://keycloak:8080/realms/chat-work/protocol/openid-connect/certs # 容器网内 JWKS
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mcp-oa:
+        condition: service_started
+      mcp-bi:
+        condition: service_started
+      mcp-crm:
+        condition: service_started
+      mcp-erp:
+        condition: service_started
+      mcp-wms:
+        condition: service_started
 
   mcp-oa:
     build:
-      context: ../../services/mcp_oa # TODO: Dockerfile 待补
+      context: ../../services/mcp_oa
       dockerfile: Dockerfile
-    command: python server.py # TODO: Streamable HTTP 启动（MVP 降级 SSE）
+    command: python server.py # Streamable HTTP（/mcp 端点）
     environment:
+      MCP_OA_HOST: 0.0.0.0 # 容器内监听
+      MCP_OA_PORT: "8001"
       OA_BASE_URL: http://oa.example.internal/api # 占位：OA OpenAPI 地址
-      DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/chatwork # 幂等表
+      OA_MODE: mock # 开发期 mock adapter；生产删掉走真实 OpenAPI
+      DATABASE_URL: mysql+aiomysql://app:app@mysql:3306/chatwork # 幂等表
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
 
   mcp-bi:
     build:
-      context: ../../services/mcp_bi # TODO: Dockerfile 待补
+      context: ../../services/mcp_bi
       dockerfile: Dockerfile
     command: python server.py
     environment:
+      MCP_BI_HOST: 0.0.0.0
+      MCP_BI_PORT: "8002"
       BI_BASE_URL: http://bi.example.internal/api # 占位：BI OpenAPI 地址
 
-  # ── 基础设施层 ──────────────────────────────────────────────────────
-  postgres:
-    image: postgres:16
+  # P2.1 业务系统扩展（PRD 6.1）：CRM 写入（官方 OpenAPI 路径）+ ERP/WMS 只读
+  mcp-crm:
+    build:
+      context: ../../services/mcp_crm
+      dockerfile: Dockerfile
+    command: python server.py
     environment:
-      POSTGRES_USER: app # 占位
-      POSTGRES_PASSWORD: app # 占位
-      POSTGRES_DB: chatwork
+      MCP_CRM_HOST: 0.0.0.0
+      MCP_CRM_PORT: "8003"
+      CRM_BASE_URL: http://crm.example.internal/api # 占位：CRM OpenAPI 地址
+      CRM_MODE: mock # 开发期 mock adapter；生产删掉走真实 OpenAPI
+      DATABASE_URL: mysql+aiomysql://app:app@mysql:3306/chatwork # 幂等表（销售订单写入）
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mcp-erp:
+    build:
+      context: ../../services/mcp_erp
+      dockerfile: Dockerfile
+    command: python server.py
+    environment:
+      MCP_ERP_HOST: 0.0.0.0
+      MCP_ERP_PORT: "8004"
+      ERP_BASE_URL: http://erp.example.internal/api # 占位：ERP OpenAPI 地址
+      ERP_MODE: mock # 全只读服务（PRD 8.2：ERP 不开放写路径）
+
+  mcp-wms:
+    build:
+      context: ../../services/mcp_wms
+      dockerfile: Dockerfile
+    command: python server.py
+    environment:
+      MCP_WMS_HOST: 0.0.0.0
+      MCP_WMS_PORT: "8005"
+      WMS_BASE_URL: http://wms.example.internal/api # 占位：WMS OpenAPI 地址
+      WMS_MODE: mock # 全只读服务（PRD 8.2：WMS 不开放写路径）
+
+  # ── 基础设施层 ──────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root # 占位
+      MYSQL_DATABASE: chatwork
+      MYSQL_USER: app # 占位
+      MYSQL_PASSWORD: app # 占位
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
+      - ../mysql/init:/docker-entrypoint-initdb.d:ro # keycloak 库 + 账号
+    ports:
+      - "3306:3306" # 开发期本机直连（生产仅内网）
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d chatwork"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7
@@ -136,9 +210,11 @@ services:
       - "9001:9001" # 控制台
 
   # vLLM：私有化 LLM 推理（A10×2 GPU，OpenAI 兼容 :8000）
-  # TODO: 需 GPU 节点；镜像与模型路径按内网制品仓选择
+  # TODO: 需 GPU 节点（PRD 14 待确认项）；镜像与模型路径按内网制品仓选择。
+  #       未启用时 agent-core 的意图识别/抽参走规则兜底，其余链路不受影响。
   vllm:
     image: vllm/vllm-openai:latest # 占位：内网镜像仓
+    profiles: ["gpu"] # 默认不启动：docker compose --profile gpu up
     environment:
       MODEL: /models/qwen # 占位：内网模型权重路径
     ports:
@@ -153,19 +229,20 @@ services:
     # volumes:
     #   - /data/models:/models # 占位：模型权重挂载
 
-  # 桌面端内网更新服务器（electron-updater feed，MVP 起）
-  # TODO: 静态文件服务（nginx/minio 均可），目录结构 latest.yml + 各版本安装包；
-  #       桌面端 electron-updater 指向该 feed 实现灰度更新
-  # update-server:
-  #   image: nginx:alpine
-  #   ports:
-  #     - "8443:80"
-  #   volumes:
-  #     - ../../releases/desktop:/usr/share/nginx/html:ro
+  # 桌面端内网更新服务器（PRD 5.5.2 / 5.5.6）：nginx 静态托管 electron-updater feed
+  # 目录约定：releases/desktop/{stable,beta}/latest.yml + 同目录安装包（.exe/.blockmap），
+  # 桌面端 electron-updater 经 UPDATE_SERVER_URL（默认 http://localhost:8090）按通道拉取；
+  # 灰度放量/强制升级由 agent-core GRAY_PERCENT / MIN_CLIENT_VERSION 门禁控制（P1.4）
+  update-server:
+    image: nginx:1.27-alpine
+    ports:
+      - "8090:80"
+    volumes:
+      - ../../releases/desktop:/usr/share/nginx/html:ro
+      - ../nginx/update-server.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
-  apisix_data:
-  pg_data:
+  mysql_data:
   redis_data:
   etcd_data:
   milvus_data:

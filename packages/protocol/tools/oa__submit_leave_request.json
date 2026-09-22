@@ -1,0 +1,61 @@
+{
+  "name": "oa__submit_leave_request",
+  "description": "提交请假申请单（写入类：必须 HITL 确认卡确认后执行；幂等提交，重复请求返回同一单据编号）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user_id": {
+        "type": "string",
+        "title": "工号",
+        "description": "员工工号"
+      },
+      "leave_type": {
+        "type": "string",
+        "enum": ["annual", "comp", "sick", "personal", "marriage", "bereavement", "maternity"],
+        "title": "假期类型",
+        "description": "annual=年假/comp=调休/sick=病假/personal=事假/marriage=婚假/bereavement=丧假/maternity=产假（年假/调休需校验余额）"
+      },
+      "start_time": {
+        "type": "string",
+        "format": "date-time",
+        "title": "开始时间",
+        "description": "ISO 8601（如 2026-09-21T09:00:00），不得早于当前时间"
+      },
+      "end_time": {
+        "type": "string",
+        "format": "date-time",
+        "title": "结束时间",
+        "description": "ISO 8601，必须晚于开始时间"
+      },
+      "duration_days": {
+        "type": "number",
+        "minimum": 0.5,
+        "multipleOf": 0.5,
+        "title": "时长（天）",
+        "description": "工作日时长，0.5 天粒度；由系统按起止时间自动计算，用户可在草稿中修改"
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "title": "事由",
+        "description": "请假事由（必填：Agent 必须追问，不提供默认值）"
+      },
+      "idempotency_key": {
+        "type": "string",
+        "title": "幂等键",
+        "description": "格式 {userId}_{sessionId}_{intentHash}_{draftVersion}；命中已存在记录时直接返回原单据编号"
+      }
+    },
+    "required": ["user_id", "leave_type", "start_time", "end_time", "duration_days", "reason", "idempotency_key"]
+  },
+  "annotations": {
+    "title": "提交请假申请",
+    "readOnlyHint": false,
+    "_meta": {
+      "humanConfirmation": "required",
+      "idempotencyRequired": true,
+      "rw": "write",
+      "requiredPermissions": ["oa:leave:write"]
+    }
+  }
+}

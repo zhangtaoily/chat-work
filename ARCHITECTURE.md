@@ -1,6 +1,6 @@
 # Chat-Work Agent 技术架构规划
 
-> 配套文档：[PRD-chat-work-agent.md](./PRD-chat-work-agent.md)（v1.7.2）｜ 交互原型：[prototype.html](./prototype.html)
+> 配套文档：[PRD-chat-work-agent.md](./PRD-chat-work-agent.md)（v1.7.5）｜ 交互原型：[prototype.html](./prototype.html)
 >
 > 技术基调：**Python（服务端） + TypeScript（客户端） + Electron（桌面端，MVP 唯一客户端，无独立 Web 应用）**
 
@@ -11,6 +11,10 @@
 | v1.2 | 2026-09-16 | 对应 PRD v1.7.2 三处原型演示态的架构深化：新增 4.7 技能市场上架与安全评审（上架状态机/沙箱试运行/SLA 通道）、4.8 自动化任务（调度器/试运行 HITL/防护栏/执行身份）、6.2 ERP 复杂单据录入数据流（三级表单模型/物料歧义候选/全屏工作台/整单幂等）；4.2 展开 Phase 2 首批 mcp-crm / mcp-erp 模块设计；数据层/契约包/映射表联动更新 |
 | v1.3 | 2026-09-16 | 吸收 OpenClaw 三点设计：4.1 关键机制新增**会话串行化车道队列**（同会话请求/确认提交/自动化推送串行执行，消除草稿竞态，借鉴 Lane Queue）；新增 4.9 记忆离线固化与可迁移（借鉴 Dreaming：低峰期小模型聚合会话提炼 L2 候选 + 敏感字段前置过滤 + 衰减对齐；借鉴 MEMORY.md：L2 记忆 Markdown 导出/导入，对应 PRD 9.2 可感知性） |
 | v1.4 | 2026-09-16 | 业务定位纠正（对应 PRD v1.7.3）：OA 侧 MVP 聚焦流程审批——6.1 数据流改为**请假审批端到端**（查余额→抽取→时长自动计算→确认→幂等提交）；4.2 mcp_oa 工具组改为 leave/expense/purchase/approvals；销售订单录入迁入 Phase 2 mcp_crm（4.2 补 crm__create_sales_order + 客户主数据带出，第 7 章契约清单同步，新增 PRD 6.1.1 引用） |
+| v1.5 | 2026-09-16 | 新增 4.2.1 遗留系统集成策略：老系统无需"支持 MCP"（MCP Server 为我方适配进程）；L1~L5 能力分级矩阵、读写分离铁律（禁 DB 直写/RPA 写入兜底/文件导入对账）、降级链（API→RPA→文件→人工兜底）、底层可替换演进价值；PRD 8.2 同步读写分离规则摘要 |
+| v1.6 | 2026-09-17 | 关系库选型变更：**MySQL 8.0+ 优先**（原 PostgreSQL 16 降为兼容验证目标）。技术栈驱动改 aiomysql（psycopg 保留）、架构图/协议矩阵/网关审计/部署 compose 联动；4.6 新增双库兼容原则 5 条（ORM 双方言、类型映射、不依赖 PG 专属能力、Alembic 双库 CI 验证、DATABASE_URL 切库零改动） |
+| v1.7 | 2026-09-17 | 对应 PRD v1.7.6 管理端设计：设计原则 #3 修正为"单一桌面客户端（员工侧）"，标注 Phase 2 Web 管理后台为唯一 Web 形态（admin.chat-work.internal，复用渲染层/ui 包，纯管理场景） |
+| v1.8 | 2026-09-17 | 对应 PRD v1.7.7 MVP 二次收窄：mcp_oa 工具目录标注 expense.py / purchase.py 为 Phase 2（PRD 6.1.2），MVP 唯一写入表单为 leave（请假审批）；6.1 请假审批数据流不受影响 |
 
 ---
 
@@ -51,7 +55,7 @@
    业务系统：OA │ BI │ CRM │ ERP │ WMS │ MES │ U8
 
 ┌───────────────────── 基础设施层 ─────────────────────────────────────────────┐
-│  PostgreSQL 16（业务/审计/幂等记录）  Redis 7（会话/权限缓存/黑名单/锁）       │
+│  MySQL 8.0+（业务/审计/幂等记录，兼容 PG 16） Redis 7（会话/权限缓存/黑名单/锁）│
 │  Milvus 2.4（记忆向量 + 知识向量）    vLLM（私有化 LLM 推理，A10×2）          │
 │  MinIO（产物/附件对象存储）           内网更新服务器（桌面端 electron-updater） │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -63,7 +67,7 @@
 |---|------|---------|
 | 1 | **语言边界清晰** | Python 只做服务端（Agent 逻辑/LLM/MCP 集成）；TS 只做客户端（Desktop/共享类型）；不跨界 |
 | 2 | **契约先行** | 所有跨进程接口 = 机器可读契约（OpenAPI / JSON Schema / MCP 协议），双语言从契约生成代码 |
-| 3 | **单一桌面客户端** | MVP 起仅 Electron 桌面端（无独立 Web 应用）；渲染层 React 与 Electron 壳分离（PRD 5.5.2），未来如需 Web 版可直接复用 renderer |
+| 3 | **单一桌面客户端（员工侧）** | MVP 起员工侧仅 Electron 桌面端（无独立 Web 应用）；渲染层 React 与 Electron 壳分离（PRD 5.5.2），未来如需 Web 版可直接复用 renderer。**唯一例外：Phase 2 Web 管理后台**（PRD 5.6，`admin.chat-work.internal`，纯管理场景，复用同一渲染层与 ui 包） |
 | 4 | **MCP 是唯一集成协议** | Agent Core 只通过 MCP 调工具；本地文件操作也实现为 MCP Server（stdio） |
 | 5 | **安全左移** | JWT 验签在网关、HITL 在流水线、幂等在 MCP Server、审计贯穿三层 |
 
@@ -79,7 +83,7 @@
 | | LangGraph | 0.2+ | 流水线与技能编排（SubGraph） |
 | | mcp（官方 Python SDK） | 1.x | MCP Server 实现 |
 | | httpx | — | 异步 HTTP 客户端（调业务系统/LLM） |
-| | SQLAlchemy 2 + asyncpg | — | PostgreSQL 异步访问 |
+| | SQLAlchemy 2 + aiomysql / psycopg | — | 关系库异步访问（**MySQL 8 优先**：aiomysql；兼容 PostgreSQL：psycopg，双方言共用一套 ORM 模型） |
 | | APScheduler + redis-lock | — | 自动化任务调度（Phase 2） |
 | | uv | — | 依赖与虚拟环境管理 |
 | | ruff + mypy + pytest | — | Lint / 类型检查 / 测试 |
@@ -90,7 +94,7 @@
 | | pnpm workspace | 9+ | Monorepo |
 | | electron-vite + electron-builder | 33+ / 26+ | 桌面端构建与打包 |
 | | Biome（或 ESLint+Prettier）+ Vitest + Playwright | — | Lint / 单测 / E2E |
-| **基础设施** | PostgreSQL / Redis / Milvus | 16 / 7 / 2.4 | 见 1.1 |
+| **基础设施** | MySQL / Redis / Milvus | 8.0+ / 7 / 2.4 | 关系库 MySQL 8 优先，另兼容 PostgreSQL 16（见 4.6） |
 | | Keycloak | 26（Quarkus） | Identity Broker |
 | | APISIX | 3.x | 网关 |
 | | vLLM | 最新稳定 | OpenAI 兼容 API，跑 Qwen/GLM 级私有模型 |
@@ -213,13 +217,13 @@ graph.add_node("format", format_node)        # 渲染卡片 JSON（前端按类�
 mcp_oa/
 ├── server.py                 # MCP Server 入口（Streamable HTTP）
 ├── tools/
-│   ├── leave.py              # oa__query_leave_balance（只读）/ oa__submit_leave_request（幂等写入）
-│   ├── expense.py            # oa__submit_expense_report（幂等写入，明细/总额自动计算）
-│   ├── purchase.py           # oa__submit_purchase_request（请购单，幂等写入）
+│   ├── leave.py              # oa__query_leave_balance（只读）/ oa__submit_leave_request（幂等写入）—— MVP 唯一写入表单
+│   ├── expense.py            # oa__submit_expense_report（Phase 2，PRD 6.1.2；明细/总额自动计算）
+│   ├── purchase.py           # oa__submit_purchase_request（Phase 2，PRD 6.1.2；请购单）
 │   └── approvals.py          # oa__query_pending_approvals / oa__approve
 ├── schemas/                  # 从 packages/protocol 同步的 JSON Schema（CI 校验）
 ├── adapters/                 # OA OpenAPI 客户端（httpx，熔断+重试）
-└── idempotency.py            # 幂等记录表（PG）
+└── idempotency.py            # 幂等记录表（关系库）
 ```
 
 **统一职责（所有 mcp-* 一致）：**
@@ -227,7 +231,7 @@ mcp_oa/
 1. `inputSchema` 校验（pydantic，加载 protocol JSON）
 2. 枚举值对齐（员工名/物料编码/客户名先调系统查询接口验证存在）
 3. Service Account 调业务系统 + `代理人` 双标记（PRD 8.5.5）
-4. 写入幂等（PG 幂等表，保留 24h）
+4. 写入幂等（关系库幂等表，保留 24h）
 5. 健康探测 + tools 热注册（Agent Core 启动/定时 `tools/list` 刷新）
 
 **Phase 2 首批接入（PRD 6.1）：**
@@ -263,6 +267,29 @@ mcp_wms/  # 入库/出库单查询、库存预警（OpenAPI，只读为主）
 > **CRM 工具读写约束**（对应原型上架向导的评审规则）：`crm__query_*` 只读工具配合 Ask 模式可走快审通道；`crm__update_*` 写入工具必须走完整安全评审（见 4.7），且调用时强制 HITL 确认。
 
 > **ERP 物料歧义原则**（对应原型物料候选选择卡）：上万种物料中 Agent **只做检索与呈现，不猜测**——`erp__search_materials` 返回 Top-N 候选（编码/规格/库存/协议价），由用户必选其一；选定后协议价等默认值由服务端带出，Agent 不得代填。
+
+### 4.2.1 遗留系统集成策略（老系统无需"支持 MCP"）
+
+**核心认知：MCP Server 是我们侧的适配进程**——对上游（agent-core）说 MCP，对下游说老系统听得懂的协议（API / SQL / 界面操作 / 文件），老系统全程无感知、零改造。每个 mcp-* 按目标系统的实际能力选择底层实现：
+
+| 级别 | 老系统状况 | mcp-* 底层实现 | 读 | 写 |
+|------|-----------|---------------|----|----|
+| L1 | REST / OpenAPI | httpx Adapter | ✅ | ✅ 首选 |
+| L2 | WebService/SOAP、私有 SDK（U8 API、金蝶 K/3） | zeep / 厂商 SDK 封装 | ✅ | ✅ 首选 |
+| L3 | 只有数据库账号 | SQLAlchemy（**独立只读账号** + 库表白名单） | ✅ | ⛔ 默认禁止 |
+| L4 | 纯 C/S 界面，无任何接口 | RPA（影刀/UiPath 机器人，由 MCP Server 调度） | ✅（慢） | ✅ 兜底 |
+| L5 | 只有 Excel 导入/导出 | 文件交换（SFTP/共享目录 + 定时解析暂存区） | ✅（有延迟） | ✅ 生成导入文件 |
+
+**读写分离铁律：**
+
+1. **读走最快的路**（L1-L3 均可，DB 只读直连天然安全）；**写必须走"老系统业务认可"的路**（L1/L2/L4/L5）——写入要经过老系统自身的校验、审批流、触发器
+2. **禁止 DB 直写业务表**：绕过校验/审批/库存扣减逻辑，数据一致性破坏且厂商免责。确需 DB 写入的场景：老系统 DBA 联合评审 + 只写**中间表**（由老系统自身消费）+ 审计
+3. **RPA 是写入的万能兜底**：单笔 30s~2min，等价于"不出错不休息的录入员"，走完整界面校验；界面变更即失效 → 选择器版本化 + 每日冒烟任务检测 + 失败告警；不适合高频场景（>50 笔/天应推动厂商开 API）
+4. **L5 文件导入**：写"待导入暂存区"，生成符合老系统导入模板的文件，失败可重试、可对账（回读确认落库）
+
+**降级链（最差情况保底）**：`API → RPA → 文件导入 → 人工兜底`。人工兜底 = Agent 仍完成字段提取、校验与草稿卡，用户一键复制/导出后手动录入老系统——效率仍显著高于纯手工。
+
+**演进价值**：MCP 封装使底层实现可替换（如 OA 明年开放 API，把 RPA 实现换成 L1，工具签名不变），**Agent Core 与技能零改动**。每半年评审一次各系统升级路径，向集团争取老系统 API 开放 / 数据中台预算。
 
 ### 4.3 renderer（桌面端渲染层，TS / React）
 
@@ -310,16 +337,26 @@ apps/desktop/
 | 组件 | 职责 |
 |------|------|
 | Keycloak | Identity Broker：AD/企微/钉钉 → OIDC；JWT RS256 签发；realm 配置纳入 `infra/keycloak`（版本化） |
-| APISIX | 路由 `/api/*` → agent-core、`/mcp/*` → 各 mcp server；插件：jwt-verify（本地公钥验签）、limit-count、audit-log（Kafka/PG 落审计） |
+| APISIX | 路由 `/api/*` → agent-core、`/mcp/*` → 各 mcp server；插件：jwt-verify（本地公钥验签）、limit-count、audit-log（Kafka/MySQL 落审计） |
 
 ### 4.6 数据层
 
 | 存储 | 用途 | 关键表/集合 |
 |------|------|------------|
-| PostgreSQL | 业务单据草稿（含复杂单据三级结构）、确认状态持久化、幂等记录、审计日志、技能/自动化/评审元数据 | `doc_drafts`、`confirmations`、`idempotency_records`、`audit_logs`、`skills`、`skill_versions`、`skill_reviews`、`automation_tasks`、`automation_runs` |
+| MySQL 8.0+（优先，兼容 PostgreSQL 16） | 业务单据草稿（含复杂单据三级结构）、确认状态持久化、幂等记录、审计日志、技能/自动化/评审元数据 | `doc_drafts`、`confirmations`、`idempotency_records`、`audit_logs`、`skills`、`skill_versions`、`skill_reviews`、`automation_tasks`、`automation_runs` |
 | Redis | L1 会话记忆（TTL 7d）、权限缓存（perm_ver 键）、JWT jti 黑名单、调度分布式锁、自动化并发信号量、会话车道队列（`session_lane:{sessionId}`） | — |
 | Milvus | L2/L3/L4 记忆向量 + 知识库向量（分 Collection 隔离） | `mem_personal_{org}`、`mem_dept_{dept}`、`kb_corp`、`kb_dept_{dept}` |
 | MinIO | 任务产物（周报/报表导出/自动化执行产物）、附件 | — |
+
+**双库兼容原则（MySQL 8 优先，PostgreSQL 16 兼容验证）：**
+
+| # | 约束 | 说明 |
+|---|------|------|
+| 1 | ORM 层双方言 | SQLAlchemy Core/ORM 统一建模，禁止手写方言专属 SQL；驱动按部署目标切换（aiomysql / psycopg） |
+| 2 | 类型映射 | JSON 字段用 SQLAlchemy `JSON`（MySQL `JSON` ↔ PG `JSONB`）；主键/外键 ID 应用层生成 UUID 存 `CHAR(36)`；时间戳 `TIMESTAMP(6)` |
+| 3 | 不依赖 PG 专属能力 | 向量检索全走 Milvus（不用 pgvector）；无存储过程/触发器/物化视图；`ON CONFLICT` 等专属语法改通用 `INSERT ... ON DUPLICATE KEY UPDATE` / `ON CONFLICT` 双实现封装在仓储层 |
+| 4 | 迁移双方言 CI 验证 | Alembic 迁移脚本在 MySQL 8 与 PG 16 两套库上跑同一测试套件（CI job `db-compat`） |
+| 5 | 运维默认 | docker-compose / Helm 默认拉起 MySQL 8；连接串 `DATABASE_URL` 切换即换库，业务代码零改动 |
 
 ### 4.7 技能市场上架与安全评审（Phase 2，PRD 3.4 / 3.5）
 
@@ -534,11 +571,11 @@ packages/protocol/
 # infra/compose/docker-compose.yml（服务清单）
 services:
   apisix:        # 网关（80/443）
-  keycloak:      # + PostgreSQL（keycloak 专用 schema）
+  keycloak:      # + MySQL（keycloak 专用库）
   agent-core:    # 2 副本（uvicorn worker=2）
   mcp-oa:  mcp-bi:
   mcp-crm: mcp-erp: mcp-wms:   # Phase 2 接入时加入（PRD 6.1 首批）
-  postgres: redis: milvus:  minio:
+  mysql:  redis:  milvus:  minio:
   vllm:          # A10×2，OpenAI 兼容 :8000
   update-server: # 桌面端 electron-updater feed（MVP 起）
 ```
@@ -608,7 +645,7 @@ services:
 | 6.1 Phase 2 系统对接（CRM/ERP/WMS） | mcp_crm / mcp_erp / mcp_wms（见 4.2 Phase 2 首批） |
 | 8.3 MCP 规范 | services/mcp_* + packages/protocol |
 | 8.5 SSO | Keycloak + APISIX jwt 插件 + desktop/main/auth.ts（Loopback） |
-| 8.7 幂等 | mcp-* 的 idempotency 模块（PG 表）+ agent_core/guardrail；ERP 整单粒度扩展见 6.2 |
+| 8.7 幂等 | mcp-* 的 idempotency 模块（关系库表）+ agent_core/guardrail；ERP 整单粒度扩展见 6.2 |
 | 9 记忆/知识库 | agent_core/memory + knowledge + Milvus/Redis（离线固化与可迁移见 4.9） |
 | 5.5 桌面端 | apps/desktop + local-mcp（TS/stdio） |
 | 16 评估 | evals/ 目录 + CI 回归门禁 |

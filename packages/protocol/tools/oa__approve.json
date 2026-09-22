@@ -1,0 +1,42 @@
+{
+  "name": "oa__approve",
+  "description": "审批操作（同意/驳回；写入类：桌面端行内二次确认 + HITL 后执行；幂等，重复请求不重复处理）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "approval_id": {
+        "type": "string",
+        "title": "待办单据 ID",
+        "description": "待办审批条目标识（来自 oa__query_pending_approvals 返回）"
+      },
+      "action": {
+        "type": "string",
+        "enum": ["approve", "reject"],
+        "title": "审批动作",
+        "description": "approve=同意/reject=驳回"
+      },
+      "comment": {
+        "type": "string",
+        "default": "",
+        "title": "审批意见",
+        "description": "可选：审批意见（驳回时建议填写）"
+      },
+      "idempotency_key": {
+        "type": "string",
+        "title": "幂等键",
+        "description": "格式 {userId}_{sessionId}_{intentHash}_{draftVersion}；命中已存在记录时直接返回原处理结果"
+      }
+    },
+    "required": ["approval_id", "action", "idempotency_key"]
+  },
+  "annotations": {
+    "title": "审批操作",
+    "readOnlyHint": false,
+    "_meta": {
+      "humanConfirmation": "required",
+      "idempotencyRequired": true,
+      "rw": "write",
+      "requiredPermissions": ["oa:approval:write"]
+    }
+  }
+}

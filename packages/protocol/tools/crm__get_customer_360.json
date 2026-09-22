@@ -1,0 +1,26 @@
+{
+  "name": "crm__get_customer_360",
+  "description": "查询客户 360 视图：档案 + 联系人 + 付款条件 + 最近成交价 + 近期订单（只读；供订单草稿默认值链使用）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "customer_id": {
+        "type": "string",
+        "minLength": 1,
+        "title": "客户编码",
+        "description": "客户编码（来自 crm__search_customers 命中结果）"
+      }
+    },
+    "required": ["customer_id"]
+  },
+  "annotations": {
+    "title": "客户 360 视图",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["crm:customer:read"]
+    }
+  }
+}

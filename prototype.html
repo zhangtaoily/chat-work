@@ -172,6 +172,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .ico-blue{background:var(--primary-soft);color:var(--primary)}
 .ico-green{background:var(--green-soft);color:var(--green)}
 .ico-amber{background:var(--amber-soft);color:var(--amber)}
+.ico-indigo{background:#eef0fe;color:#4f46e5}
+.d-wr{background:#fdeaea;color:#e02424}
 .card-head .c-title b{font-size:14.5px;display:block}
 .card-head .c-title span{font-size:11.5px;color:var(--faint)}
 .card-head .c-badges{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
@@ -864,6 +866,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
         <div class="nav-item" data-view="market" onclick="switchView('market')"><svg><use href="#i-store"/></svg>技能市场<span class="phase-tag">Phase 2</span></div>
         <div class="nav-item" data-view="kb" onclick="switchView('kb')"><svg><use href="#i-db"/></svg>知识库<span class="phase-tag">Phase 2</span></div>
         <div class="nav-item" data-view="auto" onclick="switchView('auto')"><svg><use href="#i-zap"/></svg>自动化<span class="phase-tag">Phase 2</span></div>
+        <div class="nav-item" data-view="admin" onclick="switchView('admin')"><svg><use href="#i-shield"/></svg>管理后台<span class="phase-tag">管理员</span></div>
       </div>
       <div class="nav-group" style="margin-top:10px">
         <div class="nav-label">个人</div>
@@ -1681,7 +1684,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
               <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.7 · 764 安装</span><button class="mini-btn installed" disabled>已安装</button></div>
             </div>
             <div class="skill-card" data-cat="off">
-              <div class="sk-top"><div class="sk-ico ci-skill-blue"><svg><use href="#i-cart"/></svg></div><div class="sk-meta"><b>请购单录入</b><span>信息科 · 官方 · v1.2.1</span></div><span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>Craft</span></div>
+              <div class="sk-top"><div class="sk-ico ci-skill-blue"><svg><use href="#i-cart"/></svg></div><div class="sk-meta"><b>请购单录入 <span style="font-size:10px;color:var(--amber)">Phase 2</span></b><span>信息科 · 官方 · 待上线</span></div><span class="cbadge cb-craft"><svg><use href="#i-zap"/></svg>Craft</span></div>
               <div class="sk-desc">匹配供应商 → 带采购协议价 → 预算校验 → 表单确认（HITL）→ 创建请购单</div>
               <div class="sk-chips"><span class="sk-chip">"帮我提一个请购"</span><span class="sk-chip">"铝外壳 2000 个"</span></div>
               <div class="sk-foot"><span class="sk-stat"><svg class="star"><use href="#i-star"/></svg>4.8 · 655 安装</span><button class="mini-btn agree" onclick="installSkill(this,true)"><svg><use href="#i-download"/></svg>安装</button></div>
@@ -1987,7 +1990,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
               <div class="set-row"><span class="sr-label">登录方式</span><div class="sr-main"><b>AD 域账号（OIDC + PKCE）</b><span class="sr-sub">今天 09:12 登录 · 会话有效期至 17:12（跟随工作会话）· Identity Broker：Keycloak</span></div></div>
               <div class="set-row"><span class="sr-label">权限范围</span><div class="sr-main">OA 销售单据读写 · BI 事业部A报表只读 · 数据范围：本人 → 销售科汇总<span class="sr-sub">区域（华东/华南…）、产品线、客户归属独立校验，任一不满足即拒绝</span></div></div>
               <div class="set-row"><span class="sr-label">权限版本</span><div class="sr-main"><code style="font-family:ui-monospace,Consolas,monospace;font-size:11.5px;background:var(--line-soft);border-radius:5px;padding:2px 7px">perm_ver 17</code><span class="sr-sub">权限变更后由管理员触发版本递增，缓存 TTL 5 分钟自动失效</span></div></div>
-              <div class="set-row"><span class="sr-label">我的技能</span><div class="sr-main">已安装 5 个：销售订单录入 / 待办审批 / BI 数据查询 / 请购单录入（今日新增）/ 工作周报生成</div><button class="mini-btn" onclick="switchView('market')">前往市场</button></div>
+              <div class="set-row"><span class="sr-label">我的技能</span><div class="sr-main">已安装 4 个：请假审批 / 待办审批 / BI 数据查询 / 工作周报生成<span class="sr-sub">MVP 官方技能（报销/请购录入 Phase 2 上线，见 PRD 6.1.2）</span></div><button class="mini-btn" onclick="switchView('market')">前往市场</button></div>
             </div>
 
             <div class="set-card" id="sc-exec">
@@ -2032,6 +2035,167 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
       </div>
     </section>
 
+    <!-- ================= 管理后台（PRD 5.6：桌面端角色菜单 MVP → Phase 2 独立 Web 后台） ================= -->
+    <section class="page-view" id="page-admin">
+      <div class="pv-scroll">
+        <div class="pv-inner">
+          <div class="pv-head">
+            <div class="pv-ico ico-indigo"><svg><use href="#i-shield"/></svg></div>
+            <div class="pv-title"><b>管理后台</b><span>角色：安全评审员（信息科）· 张工 —— 管理端仅对管理角色可见，员工侧栏不出现此入口</span></div>
+            <div class="pv-actions">
+              <button class="btn btn-ghost" onclick="toast('演示原型：管理后台会话 TTL 30 分钟无操作自动锁定（PRD 5.6.4）','info')">会话策略</button>
+            </div>
+          </div>
+          <div class="guard-bar"><svg><use href="#i-shield"/></svg><span><b>形态说明：</b>MVP 以桌面端角色菜单内嵌（服务端按角色下发可见入口，客户端零硬编码）；Phase 2 迁移为独立 Web 管理后台 <b>admin.chat-work.internal</b>（复用渲染层 + ui 组件包 + api-client，见 PRD 5.6.3）。<b>审计者也被审计</b>：本页全部操作写入同一审计流水；双人复核项：权限基线变更 / D2+ 知识放行 / 技能评审通过。</span></div>
+
+          <div style="display:flex;gap:8px;margin:14px 0 4px;flex-wrap:wrap">
+            <button class="tab active" onclick="adminTab(this,'review')">评审工作台 <b style="color:#e02424">3</b></button>
+            <button class="tab" onclick="adminTab(this,'kbReview')">知识库审核 <b style="color:#e02424">2</b></button>
+            <button class="tab" onclick="adminTab(this,'audit')">审计日志</button>
+            <button class="tab" onclick="adminTab(this,'users')">用户与权限</button>
+          </div>
+
+          <!-- ===== Tab 1 评审工作台 ===== -->
+          <div data-pane="review">
+            <div style="display:flex;gap:10px;margin:12px 0">
+              <div class="stat-card"><div class="s-v">3</div><div class="s-l">待评审</div></div>
+              <div class="stat-card"><div class="s-v">5</div><div class="s-l">本周通过</div></div>
+              <div class="stat-card"><div class="s-v">1</div><div class="s-l">本周驳回</div></div>
+              <div class="stat-card"><div class="s-v">0.8 天</div><div class="s-l">平均评审耗时</div></div>
+            </div>
+
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-green"><svg><use href="#i-spark"/></svg></div>
+                <div class="auto-main">
+                  <b>评审单 SEC-RV-20260916-007 · 销售合同查询 <span class="d-badge d-review">待评审</span></b>
+                  <div class="a-sub"><span>提交人 张明（销售科 · 科室管理员）</span><span>提交时间 09-16 10:32</span><span>发布范围 销售科</span><span>执行模式 Ask（只问不写）</span></div>
+                </div>
+              </div>
+              <div class="auto-result"><b>工具与数据范围声明（快审通道：全部只读工具，自动预审通过）：</b><br>① <span class="hlk">crm__query_contracts</span>（只读 · 合同列表/详情，按提交人权限过滤）　② <span class="hlk">crm__query_customers</span>（只读 · 客户主数据，脱敏字段 D3 自动过滤）</div>
+              <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+                <button class="btn btn-primary" style="height:34px" onclick="rvPass(this)"><svg><use href="#i-check"/></svg>通过并上架</button>
+                <button class="mini-btn reject" onclick="toast('演示原型：驳回需填写原因，留痕至评审记录（技能退回 draft 可整改重提）','info')">驳回（留痕）</button>
+                <span style="color:var(--faint);font-size:11.5px">通过需第二评审人复核（双人复核 · PRD 5.6.4）· 评审规则：未引入新写入类工具走 lite 快审</span>
+              </div>
+            </div>
+
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-amber"><svg><use href="#i-chart"/></svg></div>
+                <div class="auto-main">
+                  <b>评审单 SEC-RV-20260916-008 · 生产日报推送 <span class="d-badge d-review">待评审</span></b>
+                  <div class="a-sub"><span>提交人 刘计划（计划科）</span><span>2 个只读工具 + 1 个推送动作</span><span>排队中（前面 1 单）</span></div>
+                </div>
+                <button class="mini-btn" onclick="toast('演示原型：打开评审单详情（同上展开模式）','info')">评审</button>
+              </div>
+            </div>
+
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-amber"><svg><use href="#i-cart"/></svg></div>
+                <div class="auto-main">
+                  <b>评审单 SEC-RV-20260915-014 · 采购比价助手 <span class="d-badge d-wr">全量评审</span></b>
+                  <div class="a-sub"><span>提交人 赵采购（采购科）</span><span>含 1 个写入工具 erp__create_price_compare → 走全量评审通道</span><span>待补充数据范围声明</span></div>
+                </div>
+                <button class="mini-btn" onclick="toast('演示原型：已退回提交人补充「最近 90 天采购价」数据范围声明','info')">退回补充</button>
+              </div>
+            </div>
+
+            <div class="auto-result" style="margin-top:12px">本周已完成：<b>通过 5</b>（官方技能 2 · 科室技能 3）· <b>驳回 1</b>（驳回原因留痕："调用了未声明的写工具，数据范围声明与实际不符"——技能退回 draft，整改后重提走 lite 评审）。</div>
+          </div>
+
+          <!-- ===== Tab 2 知识库审核 ===== -->
+          <div data-pane="kbReview" style="display:none">
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-amber"><svg><use href="#i-db"/></svg></div>
+                <div class="auto-main">
+                  <b>《2026 版差旅报销制度》.docx <span class="d-badge d-d2">建议 D2 内部</span></b>
+                  <div class="a-sub"><span>提交人 李会计（财务科）</span><span>目标空间：集团知识库</span><span>自动解析：68 切片（300~500 Token）</span></div>
+                </div>
+              </div>
+              <div class="auto-result"><b>涉密检测报告：</b>命中 2 处疑似个人信息（第 3 页银行卡示例号 62••••••1234 · 第 7 页联系人手机号）→ 已自动脱敏候选；未命中 D3 敏感词表；密级建议 <b>D2 内部</b>（制度类文档默认）。</div>
+              <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+                <button class="btn btn-primary" style="height:34px" onclick="toast('演示原型：D2 放行需双人复核 —— 已发起第二复核人（知识库管理员·信息科）确认','ok')"><svg><use href="#i-check"/></svg>放行入库</button>
+                <button class="mini-btn reject" onclick="toast('演示原型：退回提交人处理脱敏候选后重新提交','info')">退回整改</button>
+              </div>
+            </div>
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-green"><svg><use href="#i-book"/></svg></div>
+                <div class="auto-main">
+                  <b>《销售科 SOP：报价单流转》.md <span class="d-badge d-d1">D1 公开</span></b>
+                  <div class="a-sub"><span>提交人 张明（销售科）</span><span>目标空间：销售科知识空间</span><span>涉密检测：无命中</span></div>
+                </div>
+                <button class="mini-btn" onclick="toast('演示原型：D1 科室内文档 · 科室管理员直接放行，向量化入库','ok')">直接放行</button>
+              </div>
+            </div>
+            <div class="auto-result" style="margin-top:12px"><b>失效下线：</b>《2025 版差旅报销制度》已被新版替代 —— 待确认下线（向量删除 + 历史引用计数归档：本月被引用 47 次）。<button class="mini-btn" onclick="toast('演示原型：已下线，新增引用阻断 · 会话中引用旧版的历史回答保留来源标注','info')">确认下线</button></div>
+          </div>
+
+          <!-- ===== Tab 3 审计日志 ===== -->
+          <div data-pane="audit" style="display:none">
+            <div style="display:flex;gap:8px;align-items:center;margin:12px 0;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--muted)">人员</span>
+              <select style="height:32px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:12.5px;background:#fff"><option>全员</option><option>销售科</option><option>本人（张工）</option></select>
+              <span style="font-size:12px;color:var(--muted)">动作</span>
+              <select style="height:32px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:12.5px;background:#fff"><option>全部</option><option>录单</option><option>审批</option><option>查询</option><option>管理操作</option></select>
+              <span style="font-size:12px;color:var(--muted)">时间段</span>
+              <select style="height:32px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:12.5px;background:#fff"><option>今日</option><option>近 7 天</option><option>近 30 天</option><option>自定义</option></select>
+              <button class="mini-btn" onclick="toast('演示原型：按条件检索 —— 命中 12 条','info')">查询</button>
+              <span style="flex:1"></span>
+              <button class="btn btn-ghost" style="height:34px" onclick="toast('演示原型：法务取证导出 —— 双人复核 · 导出文件带水印与操作人标记（PRD 5.6.4）','ok')"><svg><use href="#i-out"/></svg>导出（法务取证）</button>
+            </div>
+            <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff">
+              <div style="display:grid;grid-template-columns:120px 130px 90px 150px 1fr 70px;padding:9px 14px;background:var(--line-soft);font-size:11.5px;font-weight:600;color:var(--muted)"><span>时间</span><span>用户</span><span>动作</span><span>对象</span><span>参数摘要</span><span>结果</span></div>
+              <div style="display:grid;grid-template-columns:120px 130px 90px 150px 1fr 70px;padding:9px 14px;font-size:12px;border-top:1px solid var(--line-soft)"><span>09-17 09:41</span><span>张明 · 销售科</span><span>录单</span><span>oa_leave_request</span><span>请假类型 年假 · 2 天 · 幂等键 us_8123…v2</span><span style="color:#0e9f6e">成功</span></div>
+              <div style="display:grid;grid-template-columns:120px 130px 90px 150px 1fr 70px;padding:9px 14px;font-size:12px;border-top:1px solid var(--line-soft)"><span>09-17 09:38</span><span>周财务 · 财务科</span><span>审批</span><span>oa_expense_report</span><span>报销单 EXP-2611 同意 · 确认卡 token 4f9a…</span><span style="color:#0e9f6e">成功</span></div>
+              <div style="display:grid;grid-template-columns:120px 130px 90px 150px 1fr 70px;padding:9px 14px;font-size:12px;border-top:1px solid var(--line-soft)"><span>09-17 09:32</span><span>张明 · 销售科</span><span>查询</span><span>bi__query_kpi</span><span>事业部A 月销售额 · 权限过滤 3 张报表</span><span style="color:#0e9f6e">成功</span></div>
+              <div style="display:grid;grid-template-columns:120px 130px 90px 150px 1fr 70px;padding:9px 14px;font-size:12px;border-top:1px solid var(--line-soft);background:#fffbeb"><span>09-16 15:02</span><span>张工 · 信息科</span><span><b>管理操作</b></span><span>技能评审</span><span>SEC-RV-20260916-005 通过并上架 · 第二复核人 王信息</span><span style="color:#0e9f6e">成功</span></div>
+              <div style="display:grid;grid-template-columns:120px 130px 90px 150px 1fr 70px;padding:9px 14px;font-size:12px;border-top:1px solid var(--line-soft)"><span>09-15 14:20</span><span>王HR · 人力</span><span><b>管理操作</b></span><span>权限基线</span><span>李四 调岗 销售科→市场科 · perm_ver 16→17</span><span style="color:#0e9f6e">成功</span></div>
+            </div>
+            <div class="auto-result" style="margin-top:12px">今日 12 条（录单 1 · 审批 3 · 查询 8）· 留存 ≥ 180 天 · 管理操作高亮行即"审计者也被审计"——评审通过、权限变更等管理动作同样留痕。</div>
+          </div>
+
+          <!-- ===== Tab 4 用户与权限 ===== -->
+          <div data-pane="users" style="display:none">
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-green"><svg><use href="#i-user"/></svg></div>
+                <div class="auto-main">
+                  <b>权限版本 perm_ver 17</b>
+                  <div class="a-sub"><span>上次变更 09-15 14:20（王HR · 李四调岗）</span><span>缓存 TTL 5 分钟自动失效</span><span>调岗后 5 分钟内全端收敛</span></div>
+                </div>
+                <button class="mini-btn" onclick="toast('演示原型：行内二次确认 → 触发 perm_ver 18 · 全端权限缓存 5 分钟内刷新（双人复核项）','info')">触发版本递增</button>
+              </div>
+            </div>
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-amber"><svg><use href="#i-grid"/></svg></div>
+                <div class="auto-main">
+                  <b>账号生命周期联动（HR 主数据 → 账号状态）</b>
+                  <div class="a-sub"><span>在职 1,204</span><span>调岗收敛中 2</span><span>离职冻结 1</span><span>同步延迟 ≤ 30 分钟</span></div>
+                </div>
+                <button class="mini-btn" onclick="toast('演示原型：打开生命周期看板 —— 离职次日会话销毁、Token 吊销入黑名单（PRD 8.5.6）','info')">看板</button>
+              </div>
+              <div class="auto-result">李四（销售科 → 市场科）：旧权限 OA 销售单据读写 已收敛失效 · 新权限市场部报表只读 已生效（perm_ver 17）。　孙离职（已冻结）：全部会话已销毁 · refresh_token 已入 jti 黑名单 · L2 记忆按 9.3 策略进入留存期。</div>
+            </div>
+            <div class="auto-card">
+              <div class="auto-top">
+                <div class="auto-ico ci-skill-green"><svg><use href="#i-gear"/></svg></div>
+                <div class="auto-main">
+                  <b>系统配置（Phase 2 · Web 后台工作台）</b>
+                  <div class="a-sub"><span>MCP Server 注册与健康探测 8/8</span><span>工具热注册 tools/list 5 分钟刷新</span><span>模型路由 vLLM A10×2 正常</span></div>
+                </div>
+                <button class="mini-btn" onclick="toast('演示原型：MCP Server 管理页 —— mcp_oa 健康 99.98% · mcp_crm 熔断 0 次','info')">进入</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== 右侧上下文面板 ===== -->
     <aside class="ctx" id="ctxPanel">
       <div class="ctx-card">
@@ -2061,7 +2225,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
         <div class="ctx-head"><svg style="color:#4f46e5"><use href="#i-spark"/></svg>快捷技能</div>
         <div class="ctx-body">
           <div class="quick-grid">
-            <button class="qk-btn" onclick="toast('演示原型：发起请购单录入（oa_purchase_request）','info')"><svg><use href="#i-cart"/></svg>录请购单</button>
+            <button class="qk-btn" onclick="toast('演示原型：发起请假审批录入（oa_leave_request · Craft）','info')"><svg><use href="#i-user"/></svg>提请假单</button>
             <button class="qk-btn" onclick="switchView('market')"><svg><use href="#i-grid"/></svg>查库存</button>
             <button class="qk-btn" onclick="toast('演示原型：生成本周工作周报草稿（weekly_report · Plan 模式）','info')"><svg><use href="#i-book"/></svg>生成周报</button>
             <button class="qk-btn" onclick="switchView('auto')"><svg><use href="#i-zap"/></svg>自动化</button>
@@ -2709,7 +2873,7 @@ function insertPubCard(name,approved){
   stat.querySelector('.s-l').textContent='科室技能（含审核中 '+mkReviewCount+'）';
 }
 
-/* ---------- 视图路由（会话 / 技能市场 / 知识库 / 自动化 / 记忆 / 设置） ---------- */
+/* ---------- 视图路由（会话 / 技能市场 / 知识库 / 自动化 / 管理后台 / 记忆 / 设置） ---------- */
 function switchView(v){
   const isChat=v==='chat';
   document.querySelector('main.chat').style.display=isChat?'flex':'none';
@@ -2717,6 +2881,20 @@ function switchView(v){
   document.getElementById('ctxPanel').style.display=isChat?'flex':'none';
   document.querySelectorAll('.nav-item[data-view]').forEach(n=>n.classList.toggle('active',n.dataset.view===v));
   if(!isChat){document.querySelectorAll('.conv-item').forEach(c=>c.classList.remove('active'))}
+}
+
+/* ---------- 管理后台（PRD 5.6：评审工作台 / 知识库审核 / 审计日志 / 用户与权限） ---------- */
+function adminTab(btn,pane){
+  document.querySelectorAll('#page-admin .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#page-admin [data-pane]').forEach(p=>p.style.display=p.dataset.pane===pane?'block':'none');
+}
+function rvPass(btn){
+  const card=btn.closest('.auto-card');
+  card.querySelector('.d-badge').outerHTML='<span class="d-badge d-ok">已通过 · 待第二评审人复核</span>';
+  btn.outerHTML='<span style="color:#0e9f6e;font-size:12.5px;font-weight:600"><svg style="width:12px;height:12px;vertical-align:-1px"><use href="#i-check"/></svg> 已通过（双人复核中）——上架后推送企微通知提交人</span>';
+  toast('评审通过：SEC-RV-20260916-007 · 技能「销售合同查询」进入发布队列（第二评审人复核通过后上架）','ok');
+  setTimeout(()=>toast('本条管理操作已写入审计流水（审计者也被审计 · PRD 5.6.4）','info'),1100);
 }
 
 /* ---------- 登录 / 退出（PRD 8.5 SSO） ---------- */

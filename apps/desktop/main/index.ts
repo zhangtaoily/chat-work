@@ -2,9 +2,11 @@
 // TODO（对应 PRD 5.5）：
 //   - 托盘常驻（关闭窗口不退出）
 //   - Quick Ask 全局快捷键（Alt+Space 呼出快捷问答）
-//   - 内网 update-server 自动更新（electron-updater）
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
+import { getAccessToken } from './auth'
+import { registerIpcHandlers } from './ipc'
+import { setupUpdater } from './updater'
 
 // 创建主窗口：渲染层为 React 应用
 function createWindow(): void {
@@ -30,11 +32,13 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerIpcHandlers()
+  setupUpdater()
   createWindow()
-  // TODO: registerIpcHandlers()（main/ipc.ts，白名单 IPC）
+  // 预热本地会话：密钥链有 token 且临近过期则静默刷新（PRD 8.5.4）
+  void getAccessToken()
   // TODO: spawnLocalMcp()（main/local-mcp-spawn.ts，utilityProcess + stdio）
   // TODO: 托盘常驻 + Quick Ask（Alt+Space，PRD 5.5）
-  // TODO: 启动时静默刷新 token（main/auth.ts，OS 密钥链）
 })
 
 // 全部窗口关闭即退出（托盘常驻接入后移除此逻辑）

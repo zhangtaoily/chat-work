@@ -1,0 +1,26 @@
+{
+  "name": "erp__query_voucher_summary",
+  "description": "查询指定月份财务凭证摘要：凭证张数 / 按科目借贷汇总 / 借贷平衡校验（只读；借贷平衡由服务端重算断言）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "period": {
+        "type": "string",
+        "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+        "title": "会计期间",
+        "description": "格式 YYYY-MM（如 2026-09）"
+      }
+    },
+    "required": ["period"]
+  },
+  "annotations": {
+    "title": "财务凭证摘要",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["erp:voucher:read"]
+    }
+  }
+}

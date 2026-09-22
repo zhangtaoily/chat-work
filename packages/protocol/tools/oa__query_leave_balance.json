@@ -1,0 +1,31 @@
+{
+  "name": "oa__query_leave_balance",
+  "description": "查询当前用户各类假期的剩余额度（只读；年假/调休提交前必须先查余额）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user_id": {
+        "type": "string",
+        "title": "工号",
+        "description": "员工工号"
+      },
+      "leave_type": {
+        "type": "string",
+        "enum": ["annual", "comp", "sick", "personal", "marriage", "bereavement", "maternity"],
+        "title": "假期类型",
+        "description": "可选：限定查询类型（annual=年假/comp=调休/sick=病假/personal=事假/marriage=婚假/bereavement=丧假/maternity=产假）；缺省返回全部"
+      }
+    },
+    "required": ["user_id"]
+  },
+  "annotations": {
+    "title": "查询假期余额",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["oa:leave:read"]
+    }
+  }
+}

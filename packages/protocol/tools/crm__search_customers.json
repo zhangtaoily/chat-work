@@ -1,0 +1,34 @@
+{
+  "name": "crm__search_customers",
+  "description": "按名称关键词模糊搜索 CRM 客户库，返回候选列表（只读；多候选由 Agent 追问确认，PRD 6.1.1）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "keyword": {
+        "type": "string",
+        "minLength": 1,
+        "title": "客户名称关键词",
+        "description": "客户名称关键词（如 \"XX\"），必须命中客户库；不提供默认值"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10,
+        "title": "最多返回条数",
+        "description": "候选上限（1-50，默认 10）"
+      }
+    },
+    "required": ["keyword"]
+  },
+  "annotations": {
+    "title": "搜索客户",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["crm:customer:read"]
+    }
+  }
+}

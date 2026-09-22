@@ -1,0 +1,96 @@
+{
+  "name": "crm__submit_sales_order",
+  "description": "提交销售订单（写入类：必须 HITL 确认卡确认后执行；幂等提交；大额订单合计 ≥ ¥5,000 审批流自动加销售总监节点，PRD 6.1.1）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user_id": {
+        "type": "string",
+        "minLength": 1,
+        "title": "销售员工号",
+        "description": "写入操作人标记"
+      },
+      "order_type": {
+        "type": "string",
+        "enum": ["standard", "sample"],
+        "title": "单据类型",
+        "description": "standard=标准 / sample=样品（默认 standard）"
+      },
+      "customer_id": {
+        "type": "string",
+        "minLength": 1,
+        "title": "客户编码",
+        "description": "客户编码（来自 crm__search_customers 命中结果）"
+      },
+      "contact": {
+        "type": "string",
+        "minLength": 1,
+        "title": "联系人",
+        "description": "须为该客户在册联系人（单联系人自动带出，多联系人必问）"
+      },
+      "address": {
+        "type": "string",
+        "minLength": 1,
+        "title": "收货地址",
+        "description": "默认取客户主数据地址"
+      },
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "title": "商品明细",
+        "description": "明细行列表；金额由服务端按 数量×单价 重算（不信任调用方）",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sku": {
+              "type": "string",
+              "title": "商品编码"
+            },
+            "qty": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "title": "数量"
+            },
+            "price": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "title": "单价",
+              "description": "默认取客户最近成交价"
+            }
+          },
+          "required": ["sku", "qty", "price"]
+        }
+      },
+      "delivery_date": {
+        "type": "string",
+        "format": "date",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+        "title": "交货日期",
+        "description": "YYYY-MM-DD；无默认值必问，不得早于今天"
+      },
+      "payment_term": {
+        "type": "string",
+        "enum": ["prepay", "net30", "net60"],
+        "title": "付款方式",
+        "description": "prepay=预付 / net30=月结 30 天 / net60=月结 60 天（默认取客户付款条件）"
+      },
+      "idempotency_key": {
+        "type": "string",
+        "minLength": 1,
+        "title": "幂等键",
+        "description": "格式 {userId}_{sessionId}_{intentHash}_{draftVersion}；命中已存在记录时直接返回原单据编号"
+      }
+    },
+    "required": ["user_id", "order_type", "customer_id", "contact", "address", "items", "delivery_date", "payment_term", "idempotency_key"]
+  },
+  "annotations": {
+    "title": "提交销售订单",
+    "readOnlyHint": false,
+    "_meta": {
+      "humanConfirmation": "required",
+      "idempotencyRequired": true,
+      "rw": "write",
+      "requiredPermissions": ["crm:order:write"]
+    }
+  }
+}

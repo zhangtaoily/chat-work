@@ -1,0 +1,28 @@
+# mcp-wms：WMS 仓储系统 MCP Server（工具前缀 wms__，只读，ARCHITECTURE 4.2）
+[project]
+name = "mcp-wms"
+version = "0.1.0"
+description = "WMS MCP Server：出入库单查询/库存预警（Phase 2 只读，PRD 6.1）"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0,<2", # 官方 Python SDK 1.x（2.x 重命名 FastMCP→MCPServer，迁移另行评估）
+    "httpx>=0.27",
+    "pydantic>=2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

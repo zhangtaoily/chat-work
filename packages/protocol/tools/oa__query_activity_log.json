@@ -1,0 +1,33 @@
+{
+  "name": "oa__query_activity_log",
+  "description": "查询用户最近 N 天的 OA 操作日志（只读，个人工作周报数据源，PRD 5.2 场景 4 前置依赖①）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user_id": {
+        "type": "string",
+        "title": "工号",
+        "description": "员工工号"
+      },
+      "days": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 31,
+        "default": 7,
+        "title": "回溯天数",
+        "description": "查询最近 N 天的操作记录（周报默认 7）"
+      }
+    },
+    "required": ["user_id"]
+  },
+  "annotations": {
+    "title": "查询操作日志",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["oa:activity:read"]
+    }
+  }
+}

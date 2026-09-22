@@ -1,5 +1,284 @@
 {
   "realm": "chat-work",
   "enabled": true,
-  "clients": []
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 28800,
+  "clients": [
+    {
+      "clientId": "chat-work-desktop",
+      "name": "Chat-Work 桌面端",
+      "description": "桌面端 OIDC 公开客户端（RS256 + PKCE S256）。redirectUris 端口需与桌面端 loopback 回调对齐，见 infra/README.md",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://127.0.0.1:8765/auth/callback",
+        "http://localhost:8765/auth/callback"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://127.0.0.1:8765/auth/callback##http://localhost:8765/auth/callback"
+      },
+      "protocolMappers": [
+        {
+          "name": "dept",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "dept",
+            "claim.name": "dept",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "roles",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "perm_ver",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "perm_ver",
+            "claim.name": "perm_ver",
+            "jsonType.label": "int",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "idp",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "idp",
+            "claim.name": "idp",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "idp_sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "idp_sub",
+            "claim.name": "idp_sub",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "E1001",
+      "enabled": true,
+      "email": "zhangsan@corp.com",
+      "firstName": "三",
+      "lastName": "张",
+      "attributes": {
+        "emp_no": "E1001",
+        "idp": "ad",
+        "idp_sub": "zhangsan@corp.com",
+        "dept": "事业部A/销售科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E1002",
+      "enabled": true,
+      "email": "lisi@corp.com",
+      "firstName": "四",
+      "lastName": "李",
+      "attributes": {
+        "emp_no": "E1002",
+        "idp": "ad",
+        "idp_sub": "lisi@corp.com",
+        "dept": "事业部A/销售科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E1003",
+      "enabled": true,
+      "email": "wangwu@corp.com",
+      "firstName": "五",
+      "lastName": "王",
+      "attributes": {
+        "emp_no": "E1003",
+        "idp": "ad",
+        "idp_sub": "wangwu@corp.com",
+        "dept": "事业部A/销售科",
+        "roles": ["employee", "dept_manager"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2001",
+      "enabled": true,
+      "email": "zhengtuo@corp.com",
+      "firstName": "拓",
+      "lastName": "郑",
+      "attributes": {
+        "emp_no": "E2001",
+        "idp": "ad",
+        "idp_sub": "zhengtuo@corp.com",
+        "dept": "事业部A/信息科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2002",
+      "enabled": true,
+      "email": "fenggang@corp.com",
+      "firstName": "刚",
+      "lastName": "冯",
+      "attributes": {
+        "emp_no": "E2002",
+        "idp": "ad",
+        "idp_sub": "fenggang@corp.com",
+        "dept": "事业部A/生产科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2003",
+      "enabled": true,
+      "email": "xuqin@corp.com",
+      "firstName": "芹",
+      "lastName": "许",
+      "attributes": {
+        "emp_no": "E2003",
+        "idp": "ad",
+        "idp_sub": "xuqin@corp.com",
+        "dept": "事业部A/计划科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2004",
+      "enabled": true,
+      "email": "heping@corp.com",
+      "firstName": "平",
+      "lastName": "贺",
+      "attributes": {
+        "emp_no": "E2004",
+        "idp": "ad",
+        "idp_sub": "heping@corp.com",
+        "dept": "事业部A/品管科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2005",
+      "enabled": true,
+      "email": "lucang@corp.com",
+      "firstName": "仓",
+      "lastName": "鲁",
+      "attributes": {
+        "emp_no": "E2005",
+        "idp": "ad",
+        "idp_sub": "lucang@corp.com",
+        "dept": "事业部A/仓库物流",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    }
+  ]
 }

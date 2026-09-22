@@ -1,0 +1,28 @@
+# mcp-erp：ERP 系统 MCP Server（工具前缀 erp__，只读，ARCHITECTURE 4.2）
+[project]
+name = "mcp-erp"
+version = "0.1.0"
+description = "ERP MCP Server：库存查询/采购订单/财务凭证摘要（Phase 2 只读，PRD 6.1）"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0,<2", # 官方 Python SDK 1.x（2.x 重命名 FastMCP→MCPServer，迁移另行评估）
+    "httpx>=0.27",
+    "pydantic>=2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

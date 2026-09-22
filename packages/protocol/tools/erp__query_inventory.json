@@ -1,0 +1,44 @@
+{
+  "name": "erp__query_inventory",
+  "description": "查询 ERP 库存：现存量/可用量/采购在途/安全库存，支持缺料预警过滤（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sku": {
+        "type": "string",
+        "title": "商品编码",
+        "description": "商品编码精确查询（如 SKU-C）；与 keyword 可同时使用"
+      },
+      "keyword": {
+        "type": "string",
+        "title": "模糊关键词",
+        "description": "模糊匹配品名或仓库名（如 \"总仓\"）"
+      },
+      "below_safety": {
+        "type": "boolean",
+        "default": false,
+        "title": "仅看低于安全库存",
+        "description": "True 时仅返回低于安全库存的行（缺料预警口径）"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20,
+        "title": "最多返回条数",
+        "description": "1-100，默认 20"
+      }
+    },
+    "required": []
+  },
+  "annotations": {
+    "title": "ERP 库存查询",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["erp:inventory:read"]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "crm__query_order_progress",
+  "description": "按订单号查询跟单进度：状态 / 节点推进 / 异常（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "order_no": {
+        "type": "string",
+        "minLength": 1,
+        "title": "销售订单号",
+        "description": "销售订单号（如 SO20260901001）"
+      }
+    },
+    "required": ["order_no"]
+  },
+  "annotations": {
+    "title": "订单跟单进度",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["crm:order:read"]
+    }
+  }
+}

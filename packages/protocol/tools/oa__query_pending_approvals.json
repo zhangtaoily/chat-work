@@ -1,0 +1,38 @@
+{
+  "name": "oa__query_pending_approvals",
+  "description": "查询当前用户的待办审批列表（只读，对应桌面端审批待办视图）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "user_id": {
+        "type": "string",
+        "title": "工号",
+        "description": "员工工号"
+      },
+      "doc_type": {
+        "type": "string",
+        "enum": ["leave", "expense", "purchase"],
+        "title": "单据类型",
+        "description": "可选：按单据类型过滤（leave=请假/expense=报销/purchase=请购）"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10,
+        "title": "返回条数"
+      }
+    },
+    "required": ["user_id"]
+  },
+  "annotations": {
+    "title": "查询待办审批",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["oa:approval:read"]
+    }
+  }
+}

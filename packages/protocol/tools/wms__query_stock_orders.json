@@ -1,0 +1,47 @@
+{
+  "name": "wms__query_stock_orders",
+  "description": "查询 WMS 出入库单：单号/商品/数量/往来方/关联单据/状态，按日期倒序（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "order_type": {
+        "type": "string",
+        "enum": ["inbound", "outbound"],
+        "title": "单据类型",
+        "description": "inbound=入库 / outbound=出库"
+      },
+      "keyword": {
+        "type": "string",
+        "title": "模糊关键词",
+        "description": "可选：模糊匹配单号/商品编码/品名/往来方"
+      },
+      "days": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "default": 30,
+        "title": "查询窗口（天）",
+        "description": "查询最近 N 天的单据（1-365，默认 30）"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20,
+        "title": "最多返回条数",
+        "description": "1-100，默认 20"
+      }
+    },
+    "required": ["order_type"]
+  },
+  "annotations": {
+    "title": "WMS 出入库单查询",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["wms:stock:read"]
+    }
+  }
+}

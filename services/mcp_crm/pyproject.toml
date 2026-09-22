@@ -1,0 +1,32 @@
+# mcp-crm：CRM 系统 MCP Server（工具前缀 crm__，ARCHITECTURE 4.2）
+[project]
+name = "mcp-crm"
+version = "0.1.0"
+description = "CRM MCP Server：销售订单录入（幂等+审批流）/客户 360/跟单（Phase 2，PRD 6.1.1）"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0,<2", # 官方 Python SDK 1.x（2.x 重命名 FastMCP→MCPServer，迁移另行评估）
+    "httpx>=0.27",
+    "pydantic>=2",
+    "sqlalchemy>=2",
+    "aiomysql>=0.2", # MySQL 8 优先（v1.6）；兼容 PG 时切 psycopg，ORM 模型不变
+    "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+    "aiosqlite>=0.20", # 开发期无库冒烟：SQLite 内存幂等表
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

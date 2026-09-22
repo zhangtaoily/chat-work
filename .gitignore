@@ -221,10 +221,12 @@ __marimo__/
 node_modules/
 *.tsbuildinfo
 .pnpm-store/
+.pnpm-cache/
 
 # Electron 构建产物
 apps/desktop/release/
 apps/desktop/out/
+.electron-cache/
 
 # 环境变量（保留 .env.example 模板例外）
 .env.*
