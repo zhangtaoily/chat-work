@@ -48,6 +48,7 @@ import KnowledgeView from './views/KnowledgeView'
 import AutomationView from './views/AutomationView'
 import MemoryView from './views/MemoryView'
 import SettingsView from './views/SettingsView'
+import { useSkin } from './theme'
 
 const bridge = window.chatwork
 
@@ -119,6 +120,8 @@ export default function App() {
   const [confirmBusy, setConfirmBusy] = useState(false)
   // 当前视图（默认会话；对齐 prototype 左侧导航）
   const [view, setView] = useState<ViewKey>('chat')
+  // 皮肤（默认原型靛蓝，localStorage 持久化，设置页可切换）
+  const { skinKey, skin, setSkin } = useSkin()
   // null = 认证状态检测中；web 冒烟模式无桥，视为已登录的直传身份
   const [auth, setAuth] = useState<AuthStatus | null>(
     bridge
@@ -389,7 +392,7 @@ export default function App() {
   // 认证状态检测中
   if (!auth) {
     return (
-      <ConfigProvider locale={zhCN}>
+      <ConfigProvider locale={zhCN} theme={skin.antd}>
         <div
           style={{
             height: '100vh',
@@ -410,14 +413,14 @@ export default function App() {
   // SSO 登录门（仅 Electron 模式；PRD 8.5.8 桌面端 Loopback 登录）
   if (bridge && !auth.loggedIn) {
     return (
-      <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#1677ff' } }}>
+      <ConfigProvider locale={zhCN} theme={skin.antd}>
         <div
           style={{
             height: '100vh',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: '#f5f5f5'
+            background: skin.shell.contentBg
           }}
         >
           <Space direction="vertical" size={16} align="center">
@@ -446,29 +449,45 @@ export default function App() {
   }
 
   return (
-    <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#1677ff' } }}>
+    <ConfigProvider locale={zhCN} theme={skin.antd}>
       <Layout style={{ height: '100vh' }}>
-        <Layout.Sider width={200} style={{ overflow: 'auto' }}>
-          <div
-            style={{
-              height: 32,
-              margin: 16,
-              color: '#fff',
-              fontWeight: 600,
-              textAlign: 'center',
-              lineHeight: '32px',
-              background: 'rgba(255,255,255,0.2)',
-              borderRadius: 6
-            }}
-          >
-            Chat-Work Agent
+        <Layout.Sider
+          width={220}
+          style={{
+            overflow: 'auto',
+            background: skin.shell.siderBg,
+            borderRight: `1px solid ${skin.shell.headerBorder}`
+          }}
+        >
+          {/* brand（对齐 prototype：渐变方块 + 名称强调） */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 16px 10px' }}>
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 13,
+                fontWeight: 700,
+                flexShrink: 0,
+                ...skin.shell.brandMark
+              }}
+            >
+              CW
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 700, color: skin.shell.brandText, letterSpacing: 0.2 }}>
+              Chat-Work <em style={{ fontStyle: 'normal', color: skin.primary }}>Agent</em>
+            </span>
           </div>
           <Menu
-            theme="dark"
+            theme={skin.shell.menuTheme}
             mode="inline"
             selectedKeys={[view]}
             onClick={handleMenuClick}
             items={menuItems}
+            style={{ background: 'transparent', borderInlineEnd: 'none', padding: '0 8px' }}
           />
         </Layout.Sider>
         <Layout>
@@ -477,20 +496,52 @@ export default function App() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: '#001529'
+              background: skin.shell.headerBg,
+              borderBottom: `1px solid ${skin.shell.headerBorder}`,
+              height: 58,
+              paddingInline: 20
             }}
           >
-            <Typography.Title level={4} style={{ color: '#fff', margin: 0 }}>
+            <Typography.Title level={4} style={{ color: skin.shell.headerText, margin: 0 }}>
               {view === 'chat' ? 'Chat-Work 企业内网 AI Agent' : viewTitles[view]}
             </Typography.Title>
             <Space size={8}>
-              <Tag color="blue">
-                当前用户：{auth.userName ? `${auth.userName}（${auth.userId}）` : auth.userId}
-              </Tag>
+              {!bridge ? <Tag color="purple">MVP · OA 技能已接入</Tag> : null}
+              {/* 用户 chip（对齐 prototype user-chip：头像 + 姓名/工号） */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '4px 10px 4px 5px',
+                  borderRadius: 999,
+                  border: `1px solid ${skin.shell.headerBorder}`
+                }}
+              >
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    background: skin.shell.brandMark.background,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {(auth.userName || auth.userId || 'U').slice(0, 1).toUpperCase()}
+                </div>
+                <span style={{ fontSize: 12.5, color: skin.shell.headerText }}>
+                  {auth.userName ? `${auth.userName}（${auth.userId}）` : auth.userId}
+                </span>
+              </div>
               {bridge ? (
                 <Button
                   size="small"
-                  ghost
+                  ghost={skin.shell.headerDark}
                   icon={<LogoutOutlined />}
                   loading={authBusy}
                   onClick={() => {
@@ -499,9 +550,7 @@ export default function App() {
                 >
                   登出
                 </Button>
-              ) : (
-                <Tag color="purple">MVP · OA 技能已接入</Tag>
-              )}
+              ) : null}
             </Space>
           </Layout.Header>
 
@@ -509,7 +558,7 @@ export default function App() {
             style={{
               display: 'flex',
               flexDirection: 'column',
-              background: '#f5f5f5',
+              background: skin.shell.contentBg,
               overflow: 'hidden'
             }}
           >
@@ -520,18 +569,20 @@ export default function App() {
                   style={{
                     flex: 1,
                     overflowY: 'auto',
-                    padding: '24px 16%',
+                    padding: '26px 0 14px',
                     boxSizing: 'border-box'
                   }}
                 >
-                  {turns.length === 0 ? (
-                    <div style={{ textAlign: 'center', marginTop: 80 }}>
-                      <Typography.Title level={3} type="secondary">
-                        你好，我是你的工作助手
-                      </Typography.Title>
-                      <Typography.Paragraph type="secondary">
-                        可以帮你提交请假申请、查询待办审批（写入操作需二次确认）
-                      </Typography.Paragraph>
+                  {/* 聊天主列（对齐 prototype：860px 居中） */}
+                  <div style={{ maxWidth: 860, margin: '0 auto', padding: '0 24px' }}>
+                    {turns.length === 0 ? (
+                      <div style={{ textAlign: 'center', marginTop: 80 }}>
+                        <Typography.Title level={3} style={{ color: skin.shell.brandText }}>
+                          你好，我是你的<span style={{ color: skin.primary }}>工作助手</span>
+                        </Typography.Title>
+                        <Typography.Paragraph type="secondary">
+                          可以帮你提交请假申请、查询待办审批（写入操作需二次确认）
+                        </Typography.Paragraph>
                       <Space wrap style={{ justifyContent: 'center' }}>
                         {EXAMPLE_PROMPTS.map((prompt) => (
                           <Button
@@ -562,11 +613,18 @@ export default function App() {
                       />
                     ))
                   )}
+                  </div>
                 </div>
 
                 <div
-                  style={{ padding: '12px 16%', background: '#fff', borderTop: '1px solid #f0f0f0' }}
+                  style={{
+                    padding: '12px 24px',
+                    background: skin.shell.headerBg,
+                    borderTop: `1px solid ${skin.shell.headerBorder}`
+                  }}
                 >
+                  {/* 输入主列与消息流对齐（860 - 48 内边距） */}
+                  <div style={{ maxWidth: 812, margin: '0 auto' }}>
                   {voiceHint ? (
                     <Typography.Text
                       type="danger"
@@ -633,6 +691,7 @@ export default function App() {
                       </Button>
                     </Space.Compact>
                   </div>
+                  </div>
                 </div>
               </>
             ) : (
@@ -646,7 +705,7 @@ export default function App() {
                 ) : view === 'memory' ? (
                   <MemoryView />
                 ) : (
-                  <SettingsView />
+                  <SettingsView skinKey={skinKey} onSkinChange={setSkin} />
                 )}
               </div>
             )}

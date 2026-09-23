@@ -1,13 +1,19 @@
-// 设置页（最小可用版）：客户端信息 + 管理后台跳转 + 检查更新
+// 设置页：外观（皮肤切换）+ 客户端信息 + 管理后台跳转 + 检查更新
 import { useEffect, useState } from 'react'
-import { Button, Card, Descriptions, message, Space, Tag, Typography } from 'antd'
-import { CloudServerOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Button, Card, Descriptions, message, Select, Space, Tag, Typography } from 'antd'
+import { BgColorsOutlined, CloudServerOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { UpdaterState } from '../../../main/updater'
 import { AGENT_CORE_URL } from '../lib/api'
+import { SKINS, type SkinKey } from '../theme'
 
 const bridge = window.chatwork
 
-export default function SettingsView() {
+interface SettingsViewProps {
+  skinKey: SkinKey
+  onSkinChange: (key: SkinKey) => void
+}
+
+export default function SettingsView({ skinKey, onSkinChange }: SettingsViewProps) {
   const [version, setVersion] = useState('（检测中）')
   const [updateState, setUpdateState] = useState<UpdaterState | null>(null)
   const [checking, setChecking] = useState(false)
@@ -56,6 +62,24 @@ export default function SettingsView() {
   return (
     <div style={{ padding: 24, maxWidth: 760, margin: '0 auto', width: '100%' }}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Card title="外观" size="small">
+          <Space wrap align="center">
+            <BgColorsOutlined style={{ color: 'var(--ant-color-primary, #4f46e5)' }} />
+            <Typography.Text>界面皮肤</Typography.Text>
+            <Select
+              value={skinKey}
+              onChange={onSkinChange}
+              style={{ width: 180 }}
+              options={(Object.keys(SKINS) as SkinKey[]).map((key) => ({
+                value: key,
+                label: SKINS[key].name
+              }))}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              切换即时生效，默认「原型 · 靛蓝」（对齐交互原型风格）
+            </Typography.Text>
+          </Space>
+        </Card>
         <Card title="客户端" size="small">
           <Descriptions column={1} size="small">
             <Descriptions.Item label="应用版本">

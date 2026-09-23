@@ -10,7 +10,8 @@ import {
   Spin,
   Tag,
   Timeline,
-  Typography
+  Typography,
+  theme
 } from 'antd'
 import { CheckOutlined, CloseOutlined, ExpandOutlined, ReloadOutlined } from '@ant-design/icons'
 import type React from 'react'
@@ -29,6 +30,8 @@ import {
 const BUBBLE_MAX_WIDTH = 640
 
 function UserTurnView({ turn }: { turn: Extract<Turn, { role: 'user' }> }): React.JSX.Element {
+  // 用户气泡跟随皮肤主色（token 化，避免硬编码）
+  const { token } = theme.useToken()
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
       <div
@@ -37,7 +40,7 @@ function UserTurnView({ turn }: { turn: Extract<Turn, { role: 'user' }> }): Reac
           padding: '10px 14px',
           borderRadius: 12,
           borderBottomRightRadius: 4,
-          background: '#1677ff',
+          background: token.colorPrimary,
           color: '#fff',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word'
@@ -308,6 +311,8 @@ function BarList(props: {
   highlightLast?: boolean
 }): React.JSX.Element {
   const { bars, highlightLast } = props
+  // 条形颜色跟随皮肤主色（token 化）
+  const { token } = theme.useToken()
   const max = Math.max(...bars.map((b) => Number(b['value'] ?? 0)), 1)
   return (
     <>
@@ -335,7 +340,9 @@ function BarList(props: {
                   height: '100%',
                   borderRadius: 4,
                   background:
-                    highlightLast && index === bars.length - 1 ? '#52c41a' : '#1677ff'
+                    highlightLast && index === bars.length - 1
+                      ? token.colorSuccess
+                      : token.colorPrimary
                 }}
               />
             </div>
