@@ -334,8 +334,10 @@ _GL_SUBJECT_KEYWORDS: dict[str, str] = {
 
 _SKU_TOKEN = re.compile(r"SKU-[A-Za-z0-9]+")
 _ORDER_NO = re.compile(r"SO\d{8,}", re.IGNORECASE)
-# 明细段数量：「x10」「×10」「10 件/个/台/套/只」
-_QTY_IN_SEGMENT = re.compile(r"[xX×]\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:件|个|台|套|只)")
+# 明细段数量：「x10」「×10」「数量 10」「10 件/个/台/套/只」
+_QTY_IN_SEGMENT = re.compile(
+    r"[xX×]\s*(\d+(?:\.\d+)?)|数量\s*:?\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:件|个|台|套|只)"
+)
 # 明细段单价：「单价 50」「@50」「50 元/块」
 _PRICE_IN_SEGMENT = re.compile(r"(?:单价|价格|@)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:元|块)")
 # 客户关键词：显式引导词句式（下订单/查档案）
@@ -404,7 +406,7 @@ def parse_crm_items(message: str) -> list[dict[str, Any]]:
         price: float | None = None
         mq = _QTY_IN_SEGMENT.search(seg)
         if mq:
-            qty = float(mq.group(1) or mq.group(2))
+            qty = float(mq.group(1) or mq.group(2) or mq.group(3))
         mp = _PRICE_IN_SEGMENT.search(seg)
         if mp:
             price = float(mp.group(1) or mp.group(2))
