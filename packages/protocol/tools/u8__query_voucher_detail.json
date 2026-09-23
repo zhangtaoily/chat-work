@@ -1,0 +1,25 @@
+{
+  "name": "u8__query_voucher_detail",
+  "description": "查询 U8 指定凭证的借贷分录明细：摘要/科目/方向/金额 + 借贷平衡校验（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "voucher_no": {
+        "type": "string",
+        "title": "凭证号",
+        "description": "记账凭证号（如 记-2026090128），必填"
+      }
+    },
+    "required": ["voucher_no"]
+  },
+  "annotations": {
+    "title": "U8 凭证明细",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["u8:voucher:read"]
+    }
+  }
+}

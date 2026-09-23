@@ -1,0 +1,33 @@
+{
+  "name": "mes__query_production_reports",
+  "description": "查询指定 MES 工单的报工明细：操作工/报工时间/良品/不良/工时（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "work_order": {
+        "type": "string",
+        "title": "工单号",
+        "description": "生产工单号（如 MO20260902002），必填"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 20,
+        "title": "最多返回条数",
+        "description": "1-50，默认 20"
+      }
+    },
+    "required": ["work_order"]
+  },
+  "annotations": {
+    "title": "MES 报工明细查询",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["mes:report:read"]
+    }
+  }
+}

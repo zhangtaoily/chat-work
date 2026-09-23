@@ -1,0 +1,39 @@
+{
+  "name": "mes__query_work_orders",
+  "description": "查询 MES 生产工单进度：计划量/完工量/良品/不良/状态/工位，支持 SKU 与状态过滤（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sku": {
+        "type": "string",
+        "title": "商品编码",
+        "description": "商品编码精确查询（如 SKU-C），缺省查全部"
+      },
+      "status": {
+        "type": "string",
+        "enum": ["pending", "running", "done", "closed"],
+        "title": "工单状态",
+        "description": "pending=未开工 / running=生产中 / done=已完工 / closed=已结案；缺省返回全部"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 20,
+        "title": "最多返回条数",
+        "description": "1-50，默认 20"
+      }
+    },
+    "required": []
+  },
+  "annotations": {
+    "title": "MES 工单进度查询",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["mes:workorder:read"]
+    }
+  }
+}

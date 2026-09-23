@@ -45,8 +45,11 @@ from agent_core.knowledge import store as knowledge_store
 from agent_core.mcp_client.bi import call_bi_tool
 from agent_core.mcp_client.crm import call_crm_tool
 from agent_core.mcp_client.erp import call_erp_tool
+from agent_core.mcp_client.mes import call_mes_tool
 from agent_core.mcp_client.oa import McpToolError, call_oa_tool
+from agent_core.mcp_client.u8 import call_u8_tool
 from agent_core.mcp_client.wms import call_wms_tool
+from agent_core.memory import store as memory_store
 from agent_core.pipeline import permissions, rules, slots
 from agent_core.skills import store
 from agent_core.skills.registry import get_skill, match_skill
@@ -87,6 +90,8 @@ class ChatState(TypedDict, total=False):
     tool_result: Any | None  # 阶段6输出：MCP tools/call 结果
     knowledge: dict[str, Any] | None  # RAG 注入结果（PRD 9.5.3：route 消歧命中 /
     # execute 技能绑定知识检索，format 渲染引用）
+    memory_hits: list[dict[str, Any]] | None  # 记忆注入（P3.3，PRD 9.3 注入点1：
+    # intent 阶段 Top-K=3，format 渲染「已参考记忆」）
     final: dict[str, Any] | None  # 阶段7输出：文本 + 卡片
     events: Annotated[list[dict[str, Any]], operator.add]
 
@@ -116,14 +121,41 @@ async def _knowledge_search(
 
 
 async def intent_node(state: ChatState) -> dict[str, Any]:
-    """阶段1 意图识别（LLM 接入点：OpenAI 兼容 API 未配置时走规则兜底）。"""
+    """阶段1 意图识别（LLM 接入点：OpenAI 兼容 API 未配置时走规则兜底）。
+
+    记忆注入（P3.3，PRD 9.3 注入点1）：意图识别阶段注入 L2/L3 Top-K=3
+    相似记忆辅助消歧，命中以 stage_progress 提示「已参考记忆」并携带
+    memory_hits 供 format 渲染；未同意 PIPL / 无相似条目时静默跳过。
+    """
     message = state.get("message", "")
     skill = match_skill(message)
     intent_name = skill["name"] if skill else "chat"
     # TODO: LLM_BASE_URL 配置时走小模型路由（LangChain/自研均可），规则结果降级为后校验
+    events = [_stage("intent")]
+    memory_hits: list[dict[str, Any]] | None = None
+    if intent_name not in {"memory_save"}:  # 记忆写入轮自身不注入（避免自我引用）
+        try:
+            memory_hits = await memory_store.recall(
+                query=message,
+                user_id=state.get("user_id", ""),
+                dept=_auth_dept(state),
+            )
+        except Exception:  # noqa: BLE001  记忆故障不阻塞对话主流程
+            memory_hits = None
+        if memory_hits:
+            events.append(
+                {
+                    "type": "stage_progress",
+                    "stage": "intent",
+                    "message": "已参考记忆：" + "；".join(
+                        h["content"][:40] for h in memory_hits
+                    ),
+                }
+            )
     return {
         "intent": {"name": intent_name, "confidence": 1.0 if skill else 0.5},
-        "events": [_stage("intent")],
+        "memory_hits": memory_hits,
+        "events": events,
     }
 
 
@@ -353,6 +385,66 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
     if skill["name"] == "it_data_check":
         period = rules.extract_period(state.get("message", "")) or rules.current_period()
         return {"draft": {"period": {"value": period, "source": "computed"}}, "events": events}
+
+    # ---- P3.2 全部科室覆盖（PLAN P3.2，PRD 7.2）：只读视图，参数均可选 ----
+
+    # 人力速览（本人近 7 天 OA 动态）/ 管理速览（当月双指标）/
+    # 审计流水（本人近 20 条留痕）：均无必填入参
+    if skill["name"] in ("hr_roster", "mgmt_overview", "audit_trace"):
+        return {"draft": {}, "events": events}
+
+    # 技术备件巡检：SKU 可选过滤（与仓库概览同口径）
+    if skill["name"] == "tech_inventory":
+        sku = rules.extract_sku(state.get("message", ""))
+        draft = {"sku": {"value": sku, "source": "ask"}} if sku else {}
+        return {"draft": draft, "events": events}
+
+    # 产品销售看板：客户关键词可选（显式句式命中才提取，附客户 360 摘要）
+    if skill["name"] == "product_sales":
+        kw = rules.extract_customer_keyword(state.get("message", ""), allow_bare=False)
+        draft = {"keyword": {"value": kw, "source": "ask"}} if kw else {}
+        return {"draft": draft, "events": events}
+
+    # P3.3 记住偏好（PLAN P3.3，PRD 9.3）：引导词剥离后取正文
+    if skill["name"] == "memory_save":
+        content = rules.extract_memory_content(state.get("message", ""))
+        if content:
+            return {"draft": {"content": {"value": content, "source": "ask"}}, "events": events}
+        return {"draft": {}, "events": events}
+
+    # ---- P3.1 MES / U8（PLAN P3.1，PRD 7.1）：只读查询，参数可选分流 ----
+
+    # 生产报工：工单号直达报工明细；SKU 可选过滤（无单号 → 工单进度列表）
+    if skill["name"] == "mes_production_report":
+        msg = state.get("message", "")
+        draft = {}
+        work_order = rules.extract_work_order_no(msg)
+        if work_order:
+            draft["work_order"] = {"value": work_order, "source": "ask"}
+        sku = rules.extract_sku(msg)
+        if sku:
+            draft["sku"] = {"value": sku, "source": "ask"}
+        return {"draft": draft, "events": events}
+
+    # U8 总账：凭证号直达凭证明细；否则科目余额表（期间缺省当月，与凭证摘要同口径）
+    if skill["name"] == "u8_gl_summary":
+        msg = state.get("message", "")
+        voucher_no = rules.extract_voucher_no(msg)
+        if voucher_no:
+            return {
+                "draft": {"voucher_no": {"value": voucher_no, "source": "ask"}},
+                "events": events,
+            }
+        draft: dict[str, Any] = {
+            "period": {
+                "value": rules.extract_period(msg) or rules.current_period(),
+                "source": "computed",
+            }
+        }
+        subject = rules.extract_gl_subject(msg)
+        if subject:
+            draft["subject"] = {"value": subject, "source": "ask"}
+        return {"draft": draft, "events": events}
 
     return {"draft": {}, "events": events}
 
@@ -880,6 +972,38 @@ async def execute_node(state: ChatState) -> dict[str, Any]:
         hits = await _knowledge_search(state, skill["title"], tags_filter=tags)
         if hits["results"]:
             result["knowledge"] = hits
+    # P3.3 高频行为自动沉淀（PLAN P3.3，PRD 9.3 写入触发②）：同一只读查询
+    # 连续 3 次 → L2 习惯记忆（source=auto_consolidated）；未同意 PIPL /
+    # 敏感内容在 store 内静默跳过，不阻塞对话主流程
+    if (
+        skill
+        and skill["name"] != "memory_save"
+        and tool_result is not None
+        and not (isinstance(tool_result, dict) and "error" in tool_result)
+    ):
+        digest_text = (
+            "常查报表："
+            + str((state.get("draft") or {}).get("query", {}).get("value", "")).strip()
+            if skill["name"] == "bi_query"
+            else f"常用查询：{skill['title']}"
+        )
+        try:
+            saved = await memory_store.track(
+                user_id=state["user_id"],
+                skill=skill["name"],
+                text=digest_text,
+                dept=_auth_dept(state) or None,
+            )
+        except Exception:  # noqa: BLE001  自动沉淀失败不影响主流程
+            saved = None
+        if saved:
+            result.setdefault("events", result.get("events") or []).append(
+                {
+                    "type": "stage_progress",
+                    "stage": "execute",
+                    "message": f"已自动沉淀习惯记忆：{saved['content']}",
+                }
+            )
     return result
 
 
@@ -1093,6 +1217,133 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
                         "erp__query_voucher_summary", {"period": period}
                     ),
                 }
+            except McpToolError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": result, "events": events}
+        # ---- P3.2 全部科室覆盖（PLAN P3.2，PRD 7.2）：只读工具编排 ----
+
+        # 人力速览：本人近 7 天 OA 操作动态（用户标识恒取会话 user_id）
+        if skill and skill["name"] == "hr_roster":
+            try:
+                result = await call_oa_tool(
+                    "oa__query_activity_log", {"user_id": state["user_id"], "days": 7}
+                )
+            except McpToolError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": result, "events": events}
+
+        # 管理速览：BI 当月销售 KPI + 当期凭证平衡（企管双指标看板）
+        if skill and skill["name"] == "mgmt_overview":
+            try:
+                result = {
+                    "bi": await call_bi_tool("bi__execute_query", {"query": "本月销售额"}),
+                    "voucher": await call_erp_tool(
+                        "erp__query_voucher_summary", {"period": rules.current_period()}
+                    ),
+                }
+            except McpToolError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": result, "events": events}
+
+        # 审计流水（法务科）：本人近 20 条操作留痕
+        # （D3 敏感：仅本人范围；进程内直调 audit.recent，不走 MCP）
+        if skill and skill["name"] == "audit_trace":
+            rows = await audit.recent(limit=20, user_id=state.get("user_id"))
+            return {"tool_result": {"rows": rows}, "events": events}
+
+        # P3.3 记住偏好（PLAN P3.3，PRD 9.3 写入触发①）：
+        # 进程内直调 memory.add（PIPL 门禁 + 敏感过滤在 store 层）
+        if skill and skill["name"] == "memory_save":
+            draft = state.get("draft") or {}
+            content = draft.get("content", {}).get("value", "")
+            try:
+                entry = await memory_store.add(
+                    user_id=state["user_id"],
+                    content=content,
+                    kind="preference",
+                    source="ask",
+                    dept=_auth_dept(state) or None,
+                )
+            except ValueError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": entry, "events": events}
+
+        # 技术备件巡检：备件库存水位 + 备件预警（SKU 可选）
+        if skill and skill["name"] == "tech_inventory":
+            draft = state.get("draft") or {}
+            sku = draft.get("sku", {}).get("value")
+            try:
+                result = {
+                    "inventory": await call_erp_tool(
+                        "erp__query_inventory", {"sku": sku} if sku else {}
+                    ),
+                    "alerts": await call_wms_tool(
+                        "wms__query_stock_alerts", {"sku": sku} if sku else {}
+                    ),
+                }
+            except McpToolError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": result, "events": events}
+
+        # 产品销售看板：BI 产品线拆分 + 可选客户 360（显式句式命中客户名时）
+        if skill and skill["name"] == "product_sales":
+            draft = state.get("draft") or {}
+            kw = draft.get("keyword", {}).get("value")
+            try:
+                result = {
+                    "bi": await call_bi_tool(
+                        "bi__execute_query", {"query": "本月销售额", "dimensions": ["product"]}
+                    ),
+                }
+                if kw:
+                    hits = await call_crm_tool("crm__search_customers", {"keyword": kw})
+                    if len(hits) == 1:
+                        result["customer"] = await call_crm_tool(
+                            "crm__get_customer_360", {"customer_id": hits[0]["customer_id"]}
+                        )
+                    else:
+                        result["customer_candidates"] = hits
+            except McpToolError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": result, "events": events}
+
+        # ---- P3.1 MES / U8（PLAN P3.1，PRD 7.1）：只读工具编排 ----
+
+        # 生产报工：工单号直达报工明细；无单号 → 工单进度列表（SKU 可选）
+        if skill and skill["name"] == "mes_production_report":
+            draft = state.get("draft") or {}
+            work_order = draft.get("work_order", {}).get("value")
+            sku = draft.get("sku", {}).get("value")
+            try:
+                if work_order:
+                    result = await call_mes_tool(
+                        "mes__query_production_reports", {"work_order": work_order}
+                    )
+                else:
+                    result = await call_mes_tool(
+                        "mes__query_work_orders", {"sku": sku} if sku else {}
+                    )
+            except McpToolError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": result, "events": events}
+
+        # U8 总账：凭证号直达凭证明细；否则科目余额表（期间缺省当月）
+        if skill and skill["name"] == "u8_gl_summary":
+            draft = state.get("draft") or {}
+            voucher_no = draft.get("voucher_no", {}).get("value")
+            try:
+                if voucher_no:
+                    result = await call_u8_tool(
+                        "u8__query_voucher_detail", {"voucher_no": voucher_no}
+                    )
+                else:
+                    args = {
+                        "period": draft.get("period", {}).get("value") or rules.current_period()
+                    }
+                    subject = draft.get("subject", {}).get("value")
+                    if subject:
+                        args["subject"] = subject
+                    result = await call_u8_tool("u8__query_gl_balance", args)
             except McpToolError as exc:
                 return {"tool_result": {"error": str(exc)}, "events": events}
             return {"tool_result": result, "events": events}
@@ -1503,6 +1754,72 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
         events.append({"type": "final", "text": text, "cards": cards})
         return {"final": {"text": text, "cards": cards}, "events": events}
 
+    # ---- P3.2 全部科室覆盖渲染（PLAN P3.2，PRD 7.2）：五科室只读视图 ----
+
+    # 人力资源速览：本人近 7 天 OA 操作动态
+    if skill["name"] == "hr_roster" and isinstance(result, list):
+        lines = rules.build_hr_activity_lines(result)
+        if lines:
+            text = "\n".join(["近 7 天 OA 员工动态（本人）：", *lines])
+            cards = [{"type": "hr_roster", "rows": result}]
+        else:
+            text = "近 7 天无 OA 操作记录。"
+            cards = []
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # 管理层速览：BI 当月 KPI + 凭证平衡（与数据巡检同构，复用渲染）
+    if skill["name"] == "mgmt_overview" and isinstance(result, dict):
+        if "error" in result:
+            text = f"管理速览查询失败：{result['error']}"
+            cards = []
+        else:
+            text = rules.build_data_check_text(result)
+            cards = [{"type": "mgmt_overview", **result}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # 审计流水：本人近 20 条操作留痕（D3 敏感，仅本人范围）
+    if skill["name"] == "audit_trace" and isinstance(result, dict):
+        rows = result.get("rows") or []
+        text = rules.build_audit_trace_text(rows)
+        cards = [{"type": "audit_trace", "rows": rows}] if rows else []
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # 技术备件巡检：备件库存水位 + 待处置预警（与仓库概览同构，复用渲染）
+    if skill["name"] == "tech_inventory" and isinstance(result, dict):
+        if "error" in result:
+            text = f"备件巡检失败：{result['error']}"
+            cards = []
+        else:
+            text = rules.build_stock_overview_text(result)
+            cards = [{"type": "tech_inventory", **result}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # 产品销售看板：BI 产品线拆分 + 可选客户 360 摘要
+    if skill["name"] == "product_sales" and isinstance(result, dict):
+        if "error" in result:
+            text = f"产品看板查询失败：{result['error']}"
+            cards = []
+        else:
+            text = rules.build_product_sales_text(result)
+            cards = [{"type": "product_sales", **result}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # P3.3 记住偏好：写入确认（可感知性——告知用户记住了什么，可到记忆页管理）
+    if skill["name"] == "memory_save" and isinstance(result, dict):
+        if "error" in result:
+            text = f"没能记住：{result['error']}"
+            cards = []
+        else:
+            text = f"已记住：{result['content']}（可在「我的记忆」页查看或删除）"
+            cards = [{"type": "memory_save", "entry": result}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
     # ---- P2.6 跨系统编排渲染（PLAN P2.6，PRD 6.3）：workflow run 终态 ----
     if skill["name"] == "cross_system_order_flow" and isinstance(result, dict):
         steps = result.get("steps") or []
@@ -1518,6 +1835,41 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
         text = "\n".join([head, *lines])
         events.append({"type": "final", "text": text, "cards": [result]})
         return {"final": {"text": text, "cards": [result]}, "events": events}
+
+    # ---- P3.1 MES / U8 渲染（PLAN P3.1，PRD 7.1）：只读查询结果 ----
+
+    # 生产报工：无工单号 → 工单进度列表；有单号 → 报工明细
+    if skill["name"] == "mes_production_report" and isinstance(result, list):
+        rows = result
+        is_reports = bool((state.get("draft") or {}).get("work_order", {}).get("value"))
+        lines = (
+            rules.build_production_report_lines(rows)
+            if is_reports
+            else rules.build_work_order_lines(rows)
+        )
+        text = (
+            "\n".join(lines)
+            if lines
+            else ("该工单暂无报工记录。" if is_reports else "未查询到工单。")
+        )
+        card_type = "production_reports" if is_reports else "work_orders"
+        cards = [{"type": card_type, "rows": rows}] if rows else []
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # U8 总账：科目余额表 / 凭证明细（按 draft 是否有凭证号分流）
+    if skill["name"] == "u8_gl_summary" and isinstance(result, dict):
+        if "error" in result:
+            text = f"U8 查询失败：{result['error']}"
+            cards = []
+        elif (state.get("draft") or {}).get("voucher_no", {}).get("value"):
+            text = rules.build_voucher_detail_text(result)
+            cards = [{"type": "u8_voucher_detail", **result}]
+        else:
+            text = rules.build_gl_balance_text(result)
+            cards = [{"type": "u8_gl_balance", **result}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
 
     if isinstance(result, dict) and "error" in result:
         events.append({"type": "final", "text": f"提交失败：{result['error']}", "cards": []})

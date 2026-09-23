@@ -279,6 +279,116 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "E2006",
+      "enabled": true,
+      "email": "haoliu@corp.com",
+      "firstName": "人",
+      "lastName": "郝",
+      "attributes": {
+        "emp_no": "E2006",
+        "idp": "ad",
+        "idp_sub": "haoliu@corp.com",
+        "dept": "事业部A/人力资源科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2007",
+      "enabled": true,
+      "email": "qishi@corp.com",
+      "firstName": "企",
+      "lastName": "齐",
+      "attributes": {
+        "emp_no": "E2007",
+        "idp": "ad",
+        "idp_sub": "qishi@corp.com",
+        "dept": "事业部A/企管科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2008",
+      "enabled": true,
+      "email": "fashen@corp.com",
+      "firstName": "法",
+      "lastName": "法",
+      "attributes": {
+        "emp_no": "E2008",
+        "idp": "ad",
+        "idp_sub": "fashen@corp.com",
+        "dept": "事业部A/法务科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2009",
+      "enabled": true,
+      "email": "jitong@corp.com",
+      "firstName": "技",
+      "lastName": "纪",
+      "attributes": {
+        "emp_no": "E2009",
+        "idp": "ad",
+        "idp_sub": "jitong@corp.com",
+        "dept": "事业部A/技术科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "E2010",
+      "enabled": true,
+      "email": "chanpin@corp.com",
+      "firstName": "品",
+      "lastName": "庞",
+      "attributes": {
+        "emp_no": "E2010",
+        "idp": "ad",
+        "idp_sub": "chanpin@corp.com",
+        "dept": "事业部A/产品科",
+        "roles": ["employee"],
+        "perm_ver": "17"
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChatWork@2026",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

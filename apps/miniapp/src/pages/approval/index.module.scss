@@ -1,0 +1,100 @@
+// 审批页样式（PLAN P3.4）
+@use '@/styles/variables.scss' as *;
+
+.page {
+  height: 100vh;
+  background-color: $color-bg-page;
+}
+
+.scroll {
+  height: 100%;
+}
+
+.scrollPad {
+  height: $spacing-lg;
+}
+
+// ---- 页头 ----
+
+.header {
+  padding: $spacing-md;
+}
+
+.headerTitle {
+  font-size: 36px;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.headerDesc {
+  display: block;
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  margin-top: 4px;
+}
+
+.list {
+  padding: 0 $spacing-md;
+}
+
+// ---- 处置历史 ----
+
+.history {
+  margin: $spacing-md $spacing-md $spacing-md;
+  background-color: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  box-shadow: $shadow-card;
+}
+
+.historyHead {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: $spacing-sm;
+}
+
+.historyRow {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid $color-divider;
+}
+
+.historyRow:last-child {
+  border-bottom: none;
+}
+
+.tagConfirm {
+  font-size: 20px;
+  color: $color-success;
+  background-color: $color-card-accent-success;
+  padding: 2px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.tagReject {
+  font-size: 20px;
+  color: $color-error;
+  background-color: $color-card-accent-warn;
+  padding: 2px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.historyTitle {
+  flex: 1;
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  @include text-ellipsis;
+}
+
+.historyTime {
+  font-size: 20px;
+  color: $color-text-disabled;
+  margin-left: $spacing-sm;
+  flex-shrink: 0;
+}

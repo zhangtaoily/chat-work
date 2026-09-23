@@ -1,0 +1,179 @@
+// 待确认卡样式（PLAN P3.4）
+@use '@/styles/variables.scss' as *;
+
+.card {
+  background-color: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin-bottom: $spacing-md;
+  box-shadow: $shadow-card;
+  border-left: 6px solid $color-warning;
+}
+
+.cardExpired {
+  border-left-color: $color-text-disabled;
+  opacity: 0.7;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  margin-bottom: $spacing-md;
+}
+
+.badge {
+  background-color: $color-bg-tag-warn;
+  color: $color-warning;
+  font-size: $font-size-xs;
+  padding: 4px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.badgePlan {
+  background-color: $color-bg-tag;
+  color: $color-primary;
+}
+
+.title {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  @include text-ellipsis;
+}
+
+.fields {
+  margin-bottom: $spacing-md;
+}
+
+.fieldRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid $color-divider;
+}
+
+.fieldRow:last-child {
+  border-bottom: none;
+}
+
+.fieldLabel {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  flex-shrink: 0;
+  margin-right: $spacing-md;
+}
+
+.fieldValue {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  font-weight: $font-weight-medium;
+  text-align: right;
+  flex: 1;
+  word-break: break-all;
+}
+
+.steps {
+  margin-bottom: $spacing-md;
+}
+
+.stepRow {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid $color-divider;
+}
+
+.stepRow:last-child {
+  border-bottom: none;
+}
+
+.stepIdx {
+  width: 40px;
+  height: 40px;
+  border-radius: $radius-round;
+  background-color: $color-bg-tag;
+  color: $color-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.stepTool {
+  flex: 1;
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  @include text-ellipsis;
+}
+
+.stepTag {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  background-color: $color-bg-page;
+  padding: 2px 10px;
+  border-radius: $radius-round;
+  margin-left: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.stepTagWrite {
+  color: $color-warning;
+  background-color: $color-bg-tag-warn;
+}
+
+.stepConfirm {
+  font-size: $font-size-xs;
+  color: $color-primary;
+  margin-left: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.expire {
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+}
+
+.actions {
+  display: flex;
+}
+
+.btn {
+  padding: 12px 28px;
+  border-radius: $radius-md;
+  margin-left: $spacing-sm;
+}
+
+.btnReject {
+  background-color: $color-bg-page;
+}
+
+.btnConfirm {
+  background-color: $color-primary;
+}
+
+.btnDisabled {
+  opacity: 0.5;
+}
+
+.btnRejectText {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+}
+
+.btnConfirmText {
+  font-size: $font-size-sm;
+  color: #ffffff;
+  font-weight: $font-weight-medium;
+}

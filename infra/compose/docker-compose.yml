@@ -56,6 +56,8 @@ services:
       MCP_CRM_URL: http://mcp-crm:8003
       MCP_ERP_URL: http://mcp-erp:8004
       MCP_WMS_URL: http://mcp-wms:8005
+      MCP_MES_URL: http://mcp-mes:8006 # P3.1 MES（生产报工查询，只读）
+      MCP_U8_URL: http://mcp-u8:8007 # P3.1 U8（财务总账，只读 PRD 8.2）
       SSO_REQUIRED: "true" # 生产强制鉴权（PRD 8.5）
       SSO_ISSUER: http://localhost:8081/realms/chat-work # 桌面端视角 issuer（浏览器 Host）
       SSO_AUDIENCE: chat-work-desktop
@@ -74,6 +76,10 @@ services:
       mcp-erp:
         condition: service_started
       mcp-wms:
+        condition: service_started
+      mcp-mes:
+        condition: service_started
+      mcp-u8:
         condition: service_started
 
   mcp-oa:
@@ -138,6 +144,29 @@ services:
       MCP_WMS_PORT: "8005"
       WMS_BASE_URL: http://wms.example.internal/api # 占位：WMS OpenAPI 地址
       WMS_MODE: mock # 全只读服务（PRD 8.2：WMS 不开放写路径）
+
+  # P3.1 新增系统对接（PRD 7.1）：MES 生产报工 + U8 财务总账（全只读）
+  mcp-mes:
+    build:
+      context: ../../services/mcp_mes
+      dockerfile: Dockerfile
+    command: python server.py
+    environment:
+      MCP_MES_HOST: 0.0.0.0
+      MCP_MES_PORT: "8006"
+      MES_BASE_URL: http://mes.example.internal/api # 占位：MES 接口地址
+      MES_MODE: mock # 开发期 mock；生产经文件交换轮询刷新（PRD 8.2）
+
+  mcp-u8:
+    build:
+      context: ../../services/mcp_u8
+      dockerfile: Dockerfile
+    command: python server.py
+    environment:
+      MCP_U8_HOST: 0.0.0.0
+      MCP_U8_PORT: "8007"
+      U8_BASE_URL: http://u8.example.internal/api # 占位：U8 接口地址
+      U8_MODE: mock # 全只读服务（PRD 8.2：U8 JDBC 只读，严禁写入）
 
   # ── 基础设施层 ──────────────────────────────────────────────────────
   mysql:

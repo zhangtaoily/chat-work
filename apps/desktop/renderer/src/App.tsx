@@ -1,9 +1,10 @@
 // 会话主界面：消息流 + SSE 消费 + HITL 确认交互（PRD 5.2 场景 1-1）
 // Electron：SSO 登录门 + 身份由 id_token.sub 注入（PRD 8.5）；web 冒烟模式无桥直传（MVP 惯例）
-import { Alert, Button, ConfigProvider, Input, Layout, Menu, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, ConfigProvider, Input, Layout, Menu, Modal, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
   AppstoreOutlined,
+  AudioOutlined,
   BookOutlined,
   BulbOutlined,
   ClockCircleOutlined,
@@ -13,7 +14,8 @@ import {
   LogoutOutlined,
   SafetyOutlined,
   SendOutlined,
-  SettingOutlined
+  SettingOutlined,
+  SoundOutlined
 } from '@ant-design/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthStatus } from '../../main/auth-core'
@@ -34,6 +36,13 @@ import {
   streamChat,
   submitConfirmation
 } from './lib/api'
+import {
+  cancelSpeak,
+  createRecognizer,
+  speak,
+  speechInputSupported,
+  type Recognizer
+} from './lib/speech'
 import MarketView from './views/MarketView'
 import KnowledgeView from './views/KnowledgeView'
 import AutomationView from './views/AutomationView'
@@ -81,15 +90,7 @@ const menuItems = [
     type: 'group' as const,
     label: '个人',
     children: [
-      {
-        key: 'memory',
-        icon: <BulbOutlined />,
-        label: (
-          <span>
-            我的记忆 <Tag style={{ marginInlineStart: 4 }}>P3</Tag>
-          </span>
-        )
-      },
+      { key: 'memory', icon: <BulbOutlined />, label: '我的记忆' },
       { key: 'settings', icon: <SettingOutlined />, label: '设置' }
     ]
   }
@@ -98,6 +99,11 @@ const menuItems = [
 function loggedOutStatus(): AuthStatus {
   return { loggedIn: false, userId: '', userName: '', expiresAt: 0 }
 }
+
+// 语音输入能力（Chromium 内核可用；web 冒烟同为 Chromium，能力一致）
+const SPEECH_INPUT_OK = speechInputSupported()
+// 回复播报开关持久化（localStorage）
+const TTS_PREF_KEY = 'chatwork.tts'
 
 const EXAMPLE_PROMPTS = [
   '我下周三想请一天年假，家里有事',
@@ -125,6 +131,12 @@ export default function App() {
   const [forceUpdate, setForceUpdate] = useState(false)
   const [updateBusy, setUpdateBusy] = useState(false)
   const [updateMsg, setUpdateMsg] = useState('')
+  // PLAN P3.5，PRD 语音交互：语音输入（SpeechRecognition）+ 回复播报（speechSynthesis）
+  const [listening, setListening] = useState(false)
+  const [voiceHint, setVoiceHint] = useState('')
+  const recognizerRef = useRef<Recognizer | null>(null)
+  // 播报开关（localStorage 持久化，车间/仓库免手场景）
+  const [ttsOn, setTtsOn] = useState(() => localStorage.getItem(TTS_PREF_KEY) === 'on')
   // 会话 ID 全轮固定（幂等键组成部分）；刷新即新会话
   const sessionRef = useRef(crypto.randomUUID())
   const streamRef = useRef<HTMLDivElement>(null)
@@ -208,6 +220,42 @@ export default function App() {
     setTurns((prev) => [...prev, turn])
   }, [])
 
+  // 语音输入：点击开始听写，实时文本进输入框；说完停顿自动结束，再次点击手动停止
+  const toggleListening = useCallback(() => {
+    if (listening) {
+      recognizerRef.current?.stop()
+      return
+    }
+    setVoiceHint('')
+    const rec = createRecognizer({
+      onPartial: (text) => setInput(text),
+      onError: (message) => setVoiceHint(message),
+      onEnd: () => {
+        recognizerRef.current = null
+        setListening(false)
+      }
+    })
+    recognizerRef.current = rec
+    try {
+      rec.start()
+      setListening(true)
+    } catch {
+      // start 抛错（如重复启动），回退收起
+      recognizerRef.current = null
+      setListening(false)
+    }
+  }, [listening])
+
+  // 播报开关切换（关闭时打断正在进行的播报）
+  const toggleTts = useCallback(() => {
+    setTtsOn((prev) => {
+      const next = !prev
+      localStorage.setItem(TTS_PREF_KEY, next ? 'on' : 'off')
+      if (!next) cancelSpeak()
+      return next
+    })
+  }, [])
+
   // 发送一段文本（输入框回车 / 示例快捷键 / 待办行内按钮共用）
   const sendText = useCallback(
     async (text: string) => {
@@ -231,7 +279,11 @@ export default function App() {
             user_id: auth?.loggedIn ? auth.userId : WEB_SMOKE_USER_ID,
             message: trimmed
           },
-          (event) => patchAssistant(assistantId, (turn) => applyEvent(turn, event))
+          (event) => {
+            patchAssistant(assistantId, (turn) => applyEvent(turn, event))
+            // final 回复播报（车间/仓库免手场景，PLAN P3.5）
+            if (event.type === 'final' && ttsOn) speak(event.text)
+          }
         )
       } catch (err) {
         // 强制升级门禁：弹更新引导而非普通失败提示（PRD 5.5.6 强制升级口径）
@@ -246,7 +298,7 @@ export default function App() {
         setStreaming(false)
       }
     },
-    [streaming, patchAssistant, auth?.userId]
+    [streaming, patchAssistant, auth?.userId, ttsOn]
   )
 
   const send = useCallback(() => {
@@ -515,31 +567,72 @@ export default function App() {
                 <div
                   style={{ padding: '12px 16%', background: '#fff', borderTop: '1px solid #f0f0f0' }}
                 >
-                  <Space.Compact style={{ width: '100%' }}>
-                    <Input
-                      size="large"
-                      value={input}
-                      placeholder={
-                        streaming ? '助手正在处理…' : '输入消息，例如：我下周三想请一天年假'
-                      }
-                      disabled={streaming}
-                      onChange={(e) => setInput(e.target.value)}
-                      onPressEnter={() => {
-                        void send()
-                      }}
-                    />
-                    <Button
-                      type="primary"
-                      size="large"
-                      icon={<SendOutlined />}
-                      loading={streaming}
-                      onClick={() => {
-                        void send()
-                      }}
+                  {voiceHint ? (
+                    <Typography.Text
+                      type="danger"
+                      style={{ display: 'block', fontSize: 12, marginBottom: 4 }}
                     >
-                      发送
-                    </Button>
-                  </Space.Compact>
+                      {voiceHint}
+                    </Typography.Text>
+                  ) : null}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Tooltip
+                      title={
+                        !SPEECH_INPUT_OK
+                          ? '当前环境不支持语音输入'
+                          : listening
+                            ? '停止语音输入'
+                            : '语音输入'
+                      }
+                    >
+                      <Button
+                        size="large"
+                        icon={<AudioOutlined />}
+                        type={listening ? 'primary' : 'default'}
+                        danger={listening}
+                        disabled={!SPEECH_INPUT_OK || streaming}
+                        onClick={toggleListening}
+                      />
+                    </Tooltip>
+                    <Space.Compact style={{ flex: 1 }}>
+                      <Input
+                        size="large"
+                        value={input}
+                        placeholder={
+                          listening
+                            ? '正在聆听，请讲话…'
+                            : streaming
+                              ? '助手正在处理…'
+                              : '输入消息，或点击左侧麦克风语音输入'
+                        }
+                        disabled={streaming}
+                        onChange={(e) => setInput(e.target.value)}
+                        onPressEnter={() => {
+                          void send()
+                        }}
+                      />
+                      <Tooltip title={ttsOn ? '回复播报：已开启' : '回复播报：已关闭'}>
+                        <Button
+                          size="large"
+                          icon={<SoundOutlined />}
+                          type={ttsOn ? 'primary' : 'default'}
+                          ghost={ttsOn}
+                          onClick={toggleTts}
+                        />
+                      </Tooltip>
+                      <Button
+                        type="primary"
+                        size="large"
+                        icon={<SendOutlined />}
+                        loading={streaming}
+                        onClick={() => {
+                          void send()
+                        }}
+                      >
+                        发送
+                      </Button>
+                    </Space.Compact>
+                  </div>
                 </div>
               </>
             ) : (

@@ -1,0 +1,149 @@
+// 信箱页样式（PLAN P3.4）
+@use '@/styles/variables.scss' as *;
+
+.page {
+  height: 100vh;
+  background-color: $color-bg-page;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: $spacing-sm $spacing-md;
+  background-color: $color-bg-card;
+  border-bottom: 1px solid $color-divider;
+}
+
+.filterChip {
+  padding: 6px 24px;
+  border-radius: $radius-round;
+  background-color: $color-bg-page;
+}
+
+.filterActive {
+  background-color: $color-primary;
+}
+
+.filterText {
+  font-size: $font-size-xs;
+  color: $color-text-secondary;
+}
+
+.filterTextActive {
+  color: #ffffff;
+}
+
+.toolbarRight {
+  padding: 6px 12px;
+}
+
+.markAll {
+  font-size: $font-size-sm;
+  color: $color-primary;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.scrollPad {
+  height: $spacing-lg;
+}
+
+.list {
+  padding: $spacing-sm $spacing-md;
+}
+
+// ---- 信箱条目 ----
+
+.item {
+  background-color: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin-bottom: $spacing-sm;
+  box-shadow: $shadow-card;
+}
+
+.itemHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.itemHeadLeft {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.unreadDot {
+  width: 16px;
+  height: 16px;
+  border-radius: $radius-round;
+  background-color: $color-error;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.kindTag {
+  font-size: 20px;
+  color: $color-primary;
+  background-color: $color-bg-tag;
+  padding: 2px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.kindPause {
+  color: $color-warning;
+  background-color: $color-bg-tag-warn;
+}
+
+.taskName {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $color-text-primary;
+  @include text-ellipsis;
+}
+
+.runAt {
+  font-size: 20px;
+  color: $color-text-disabled;
+  margin-left: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.bodyText {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  line-height: $line-height-loose;
+}
+
+.bodyFail {
+  color: $color-error;
+}
+
+.skill {
+  display: block;
+  font-size: 20px;
+  color: $color-text-disabled;
+  margin-top: 8px;
+}
+
+.loading {
+  padding: 40px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.loadingText {
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+}

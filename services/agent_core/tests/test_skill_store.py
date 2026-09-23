@@ -207,7 +207,7 @@ def test_api_marketplace_and_detail(client: TestClient, rsa_key: Any) -> None:
     assert body["count"] >= 15  # 内置基线全量上架
     assert all(i["status"] == "published" for i in body["items"])
     dept_items = client.get("/skills", params={"category": "dept"}, headers=auth(tok)).json()
-    assert dept_items["count"] == 5  # P2.2 五科室技能
+    assert dept_items["count"] == 10  # P2.2 五科室 + P3.2 剩余五科室技能
     assert all(i["category"] == "dept" for i in dept_items["items"])
     searched = client.get("/skills", params={"q": "库存"}, headers=auth(tok)).json()
     assert any(i["name"] == "erp_inventory_query" for i in searched["items"])

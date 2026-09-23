@@ -315,6 +315,22 @@ PO_STATUS_LABELS: dict[str, str] = {
 }
 WMS_STATUS_LABELS: dict[str, str] = {"pending": "待处理", "done": "已完成", "blocked": "阻塞"}
 ALERT_TYPE_LABELS: dict[str, str] = {"low_stock": "低库存", "expiry": "效期临期"}
+# P3.1 MES 工单状态（PLAN P3.1，PRD 7.1；与 mes__*.json 枚举对齐）
+MES_STATUS_LABELS: dict[str, str] = {
+    "pending": "未开工",
+    "running": "生产中",
+    "done": "已完工",
+    "closed": "已结案",
+}
+# P3.1 U8 科目关键词映射（PLAN P3.1：口语「银行/应收」→ 科目名模糊匹配）
+_GL_SUBJECT_KEYWORDS: dict[str, str] = {
+    "银行": "银行",
+    "应收": "应收",
+    "应付": "应付",
+    "收入": "收入",
+    "成本": "成本",
+    "税费": "税费",
+}
 
 _SKU_TOKEN = re.compile(r"SKU-[A-Za-z0-9]+")
 _ORDER_NO = re.compile(r"SO\d{8,}", re.IGNORECASE)
@@ -331,6 +347,25 @@ _CUSTOMER_KW_PATTERNS = (
 _CUSTOMER_STOPWORDS = {"下订单", "下单", "订货", "订单录入", "销售订单", "订单"}
 # ERP 期间抽取（YYYY-MM / YYYY年M月）
 _PERIOD_TOKEN = re.compile(r"(20\d{2})[-/年](\d{1,2})")
+# P3.3 显式记忆句式（PRD 9.3：「记住这个」等引导词 + 内容）
+_MEMORY_PATTERNS = (
+    re.compile(r"(?:请|麻烦)?(?:帮我)?记住(?:这个|一下|这条)?[：:，,]?\s*(.+)", re.DOTALL),
+    re.compile(r"(?:请|麻烦)?帮我?记一下[：:，,]?\s*(.+)", re.DOTALL),
+)
+
+
+def extract_memory_content(message: str) -> str | None:
+    """抽取显式记忆内容（PRD 9.3 写入触发①「用户显式说记住这个」）。
+
+    引导词前缀剥离后取剩余正文；未命中返回 None（普通消息不误伤）。
+    """
+    for pat in _MEMORY_PATTERNS:
+        m = pat.search(message)
+        if m:
+            content = (m.group(m.lastindex) or "").strip().strip("。.！!？? ")
+            if content:
+                return content
+    return None
 
 
 def extract_customer_keyword(message: str, allow_bare: bool = True) -> str | None:
@@ -434,6 +469,26 @@ def extract_po_status(message: str) -> str | None:
         return "in_transit"
     if "已入库" in message or "已到货" in message:
         return "received"
+    return None
+
+
+def extract_work_order_no(message: str) -> str | None:
+    """抽取 MES 工单号（MO + 8 位以上数字，对齐 _ORDER_NO 的 SO 模式）。"""
+    m = re.search(r"MO\d{8,}", message, re.IGNORECASE)
+    return m.group(0).upper() if m else None
+
+
+def extract_voucher_no(message: str) -> str | None:
+    """抽取 U8 凭证号（记/转/收/付 + 横杠 + 数字，如 记-2026090128）。"""
+    m = re.search(r"(?:记|转|收|付)\s*[-－]?\s*\d{6,}", message)
+    return m.group(0).replace("－", "-").replace(" ", "") if m else None
+
+
+def extract_gl_subject(message: str) -> str | None:
+    """抽取 U8 科目关键词（口语「银行存款/应收」→ 余额表科目模糊匹配）。"""
+    for kw in _GL_SUBJECT_KEYWORDS:
+        if kw in message:
+            return kw
     return None
 
 
@@ -767,4 +822,159 @@ def build_data_check_text(payload: dict[str, Any]) -> str:
         )
     if not lines:
         lines.append("暂无可巡检数据。")
+    return "\n".join(lines)
+
+
+# ---- P3.1 MES / U8 渲染（PLAN P3.1，PRD 7.1：只读查询场景）----
+
+
+def build_work_order_lines(rows: list[dict[str, Any]]) -> list[str]:
+    """MES 工单进度行文本（计划/完工/良品/不良/状态/工位）。"""
+    return [
+        "{no} {name}（{sku}）@{ws}：计划 {plan:g}，完工 {done:g}（良品 {good:g}/不良 {ng:g}），{status}".format(
+            no=r.get("work_order", ""),
+            name=r.get("sku_name", ""),
+            sku=r.get("sku", ""),
+            ws=r.get("workstation", "-"),
+            plan=float(r.get("plan_qty", 0)),
+            done=float(r.get("completed_qty", 0)),
+            good=float(r.get("good_qty", 0)),
+            ng=float(r.get("ng_qty", 0)),
+            status=MES_STATUS_LABELS.get(str(r.get("status", "")), str(r.get("status", ""))),
+        )
+        for r in rows
+    ]
+
+
+def build_production_report_lines(rows: list[dict[str, Any]]) -> list[str]:
+    """MES 报工明细行文本（操作工/时间/良品/不良/工时）。"""
+    return [
+        "- {time} {op}：报工 {good:g}（不良 {ng:g}），工时 {hours:g}h（{no}）".format(
+            time=r.get("report_time", "-"),
+            op=r.get("operator", "-"),
+            good=float(r.get("good_qty", 0)),
+            ng=float(r.get("ng_qty", 0)),
+            hours=float(r.get("work_hours", 0)),
+            no=r.get("report_no", ""),
+        )
+        for r in rows
+    ]
+
+
+def build_gl_balance_text(data: dict[str, Any]) -> str:
+    """U8 科目余额表文本：期间/本期借贷合计 + 期初/期末明细。"""
+    rows = data.get("rows") or []
+    lines = [
+        "期间 {p}：{n} 个科目，本期借方合计 {d:,.2f} 元，贷方合计 {c:,.2f} 元（U8 只读）".format(
+            p=data.get("period", ""),
+            n=len(rows),
+            d=float(data.get("debit_total", 0)),
+            c=float(data.get("credit_total", 0)),
+        )
+    ]
+    lines += [
+        "- {subject}（{dir}）：期初 {opening:,.2f}，本期 借 {debit:,.2f} / 贷 {credit:,.2f}，期末 {closing:,.2f}".format(
+            subject=r.get("subject", ""),
+            dir="借" if r.get("direction") == "debit" else "贷",
+            opening=float(r.get("opening", 0)),
+            debit=float(r.get("debit", 0)),
+            credit=float(r.get("credit", 0)),
+            closing=float(r.get("closing", 0)),
+        )
+        for r in rows
+    ]
+    return "\n".join(lines)
+
+
+def build_voucher_detail_text(data: dict[str, Any]) -> str:
+    """U8 凭证明细文本：凭证号/日期/摘要 + 借贷分录 + 平衡校验。"""
+    balanced = "借贷平衡" if data.get("balanced") else "借贷不平（需核查）"
+    lines = [
+        "凭证 {no}（{date}）：{summary}，{b}".format(
+            no=data.get("voucher_no", ""),
+            date=data.get("voucher_date", "-"),
+            summary=data.get("summary", ""),
+            b=balanced,
+        )
+    ]
+    lines += [
+        "- {dir}：{subject} {amount:,.2f} 元".format(
+            dir="借" if e.get("direction") == "debit" else "贷",
+            subject=e.get("subject", ""),
+            amount=float(e.get("amount", 0)),
+        )
+        for e in data.get("entries") or []
+    ]
+    return "\n".join(lines)
+
+
+# ---- P3.2 全部科室覆盖渲染（PLAN P3.2，PRD 7.2）----
+# 管理速览复用 build_data_check_text（{bi, voucher} 同构）、
+# 技术备件复用 build_stock_overview_text（{inventory, alerts} 同构）。
+
+
+def build_hr_activity_lines(rows: list[dict[str, Any]]) -> list[str]:
+    """人力资源科员工动态行文本（近 7 天 OA 操作记录）。"""
+    return [
+        "- {t} [{type}] {summary}".format(
+            t=str(r.get("occurred_at", ""))[:16],
+            type=r.get("action_type", ""),
+            summary=r.get("summary", ""),
+        )
+        for r in rows
+    ]
+
+
+def build_audit_trace_text(rows: list[dict[str, Any]]) -> str:
+    """法务科审计流水文本：本人操作留痕（D3 敏感：仅本人范围）。"""
+    if not rows:
+        return "暂无审计流水记录。"
+    lines = [f"本人近 {len(rows)} 条操作留痕（最新在前）："]
+    lines += [
+        "- {t} {action}（{tool}）→ {res}".format(
+            t=str(r.get("time", ""))[:19],
+            action=r.get("action", ""),
+            tool=r.get("tool") or "-",
+            res=r.get("result", ""),
+        )
+        for r in rows
+    ]
+    return "\n".join(lines)
+
+
+def build_product_sales_text(payload: dict[str, Any]) -> str:
+    """产品科销售看板：BI 产品线拆分 + 可选客户 360 摘要。"""
+    lines: list[str] = []
+    bi = payload.get("bi") or {}
+    series = bi.get("series") or []
+    period = (bi.get("kpi") or {}).get("period", "")
+    if series:
+        lines.append(f"{period}产品线销售额：")
+        lines += [
+            "- {label}：{value:,.2f} 元".format(label=s.get("label", ""), value=float(s.get("value", 0)))
+            for s in series
+        ]
+    else:
+        kpi = bi.get("kpi") or {}
+        if kpi:
+            lines.append(
+                "BI：{p} {label}：{value:,.2f} 元".format(
+                    p=kpi.get("period", ""),
+                    label=kpi.get("label", ""),
+                    value=float(kpi.get("value", 0)),
+                )
+            )
+    customer = payload.get("customer") or {}
+    if isinstance(customer, dict) and customer:
+        lines.append(
+            "头部客户：{name}（信用 {credit}，历史订单 {n} 笔）".format(
+                name=customer.get("name", "-"),
+                credit=customer.get("credit_level", "-"),
+                n=len(customer.get("orders") or []),
+            )
+        )
+    elif payload.get("customer_candidates"):
+        lines.append(f"客户候选 {len(payload['customer_candidates'])} 家，请指明具体客户。")
+    if not lines:
+        lines.append("暂无产品销售数据。")
     return "\n".join(lines)

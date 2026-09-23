@@ -38,6 +38,14 @@ class Settings:
         return env("MCP_WMS_URL", "http://127.0.0.1:8005")
 
     @property
+    def mcp_mes_url(self) -> str:
+        return env("MCP_MES_URL", "http://127.0.0.1:8006")
+
+    @property
+    def mcp_u8_url(self) -> str:
+        return env("MCP_U8_URL", "http://127.0.0.1:8007")
+
+    @property
     def redis_url(self) -> str | None:
         """REDIS_URL 未配置 → HITL 存储回退内存实现。"""
         return env("REDIS_URL") or None

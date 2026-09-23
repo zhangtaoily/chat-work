@@ -12,14 +12,17 @@ import {
   Timeline,
   Typography
 } from 'antd'
-import { CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CheckOutlined, CloseOutlined, ExpandOutlined, ReloadOutlined } from '@ant-design/icons'
 import type React from 'react'
 import { useEffect, useState } from 'react'
 import type { AssistantTurn, Turn } from './chatModel'
+import { DocWorkbenchModal } from './DocWorkbenchModal'
 import {
   fieldLabel,
   fieldValueText,
   HIDDEN_FIELDS,
+  MEMORY_KIND_LABELS,
+  MEMORY_LAYER_LABELS,
   SOURCE_LABELS
 } from './labels'
 
@@ -122,6 +125,8 @@ function ConfirmCardView(props: {
   const [remain, setRemain] = useState(() =>
     confirm ? Math.max(0, confirm.expires_at - Date.now()) : 0
   )
+  // 单据工作台弹层（复杂单据全屏预览，wb-a MVP）
+  const [wbOpen, setWbOpen] = useState(false)
 
   useEffect(() => {
     if (!confirm) return
@@ -170,6 +175,15 @@ function ConfirmCardView(props: {
           </Descriptions.Item>
         ))}
       </Descriptions>
+      <Button
+        type="link"
+        size="small"
+        icon={<ExpandOutlined />}
+        style={{ padding: 0, marginTop: 8 }}
+        onClick={() => setWbOpen(true)}
+      >
+        展开完整单据
+      </Button>
       <Space style={{ marginTop: 12 }}>
         {turn.confirmState === 'confirmed' && (
           <Tag icon={<CheckOutlined />} color="success">
@@ -206,6 +220,16 @@ function ConfirmCardView(props: {
           </>
         )}
       </Space>
+      <DocWorkbenchModal
+        open={wbOpen}
+        onClose={() => setWbOpen(false)}
+        draft={turn.draft}
+        confirm={confirm}
+        confirmState={turn.confirmState}
+        confirmBusy={confirmBusy}
+        remain={remain}
+        onConfirm={onConfirm}
+      />
     </Card>
   )
 }
@@ -435,6 +459,23 @@ function WeeklyReportCardView({ card }: { card: Record<string, unknown> }): Reac
   )
 }
 
+/** P3.3 记住偏好确认卡（PRD 9.3 写入触发①：可感知性——展示记住了什么，引导去记忆页管理） */
+function MemorySaveCardView({ entry }: { entry: Record<string, unknown> }): React.JSX.Element {
+  const content = String(entry['content'] ?? '')
+  const kind = MEMORY_KIND_LABELS[String(entry['kind'] ?? '')] ?? String(entry['kind'] ?? '')
+  const layer = MEMORY_LAYER_LABELS[String(entry['layer'] ?? '')] ?? String(entry['layer'] ?? '')
+  return (
+    <Card size="small" style={{ marginBottom: 8, borderColor: '#ffe58f', background: '#fffbe6' }}>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        已存入{layer} · {kind}
+      </Typography.Text>
+      <Typography.Paragraph style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>
+        {content}
+      </Typography.Paragraph>
+    </Card>
+  )
+}
+
 function FinalCardsView(props: {
   cards: Array<Record<string, unknown>>
   streaming: boolean
@@ -460,6 +501,9 @@ function FinalCardsView(props: {
         }
         if (card['type'] === 'weekly_report') {
           return <WeeklyReportCardView key={index} card={card} />
+        }
+        if (card['type'] === 'memory_save' && card['entry'] instanceof Object) {
+          return <MemorySaveCardView key={index} entry={card['entry'] as Record<string, unknown>} />
         }
         const entries = Object.entries(card).filter(([key]) => !HIDDEN_FIELDS.has(key))
         const hasDocNo = typeof card['doc_no'] === 'string'

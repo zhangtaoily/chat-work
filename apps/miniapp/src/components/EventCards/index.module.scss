@@ -1,0 +1,247 @@
+// 对话事件卡样式（PLAN P3.4）
+@use '@/styles/variables.scss' as *;
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+// ---- 阶段进度行 ----
+
+.stageRow {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.stageDot {
+  width: 12px;
+  height: 12px;
+  border-radius: $radius-round;
+  background-color: $color-primary;
+  opacity: 0.5;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.stageText {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+}
+
+// ---- 卡片通用 ----
+
+.card {
+  background-color: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  margin-top: $spacing-sm;
+  box-shadow: $shadow-card;
+}
+
+.cardAccent {
+  border-left: 6px solid $color-warning;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+
+.cardBadge {
+  background-color: $color-bg-tag;
+  color: $color-primary;
+  font-size: $font-size-xs;
+  padding: 4px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+}
+
+.badgeWarn {
+  background-color: $color-bg-tag-warn;
+  color: $color-warning;
+}
+
+.cardMeta {
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+}
+
+// ---- 键值行 ----
+
+.kvRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.kvLabel {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  margin-right: $spacing-md;
+  flex-shrink: 0;
+}
+
+.kvValue {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  text-align: right;
+  word-break: break-all;
+}
+
+.kvStrong {
+  font-weight: $font-weight-semibold;
+  color: $color-warning;
+}
+
+// ---- 缺失字段 ----
+
+.missingRow {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: $spacing-sm;
+}
+
+.missingTag {
+  font-size: $font-size-xs;
+  color: $color-warning;
+  background-color: $color-bg-tag-warn;
+  padding: 4px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+  margin-bottom: $spacing-xs;
+}
+
+// ---- 确认卡（对话内精简态） ----
+
+.confirmTitle {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: $spacing-sm;
+}
+
+.gotoApproval {
+  display: inline-flex;
+  padding: 12px 24px;
+  background-color: $color-primary;
+  border-radius: $radius-md;
+  align-self: flex-start;
+}
+
+.gotoText {
+  font-size: $font-size-sm;
+  color: #ffffff;
+  font-weight: $font-weight-medium;
+}
+
+// ---- 变更卡 ----
+
+.diffRow {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid $color-divider;
+}
+
+.diffRow:last-child {
+  border-bottom: none;
+}
+
+.diffField {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  margin-right: $spacing-md;
+  flex-shrink: 0;
+}
+
+.diffOld {
+  font-size: $font-size-sm;
+  color: $color-text-disabled;
+  text-decoration: line-through;
+}
+
+.diffArrow {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  margin: 0 8px;
+}
+
+.diffNew {
+  font-size: $font-size-sm;
+  color: $color-primary;
+  font-weight: $font-weight-semibold;
+}
+
+// ---- 物料候选 ----
+
+.candidateRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid $color-divider;
+}
+
+.candidateRow:last-child {
+  border-bottom: none;
+}
+
+.candidateMain {
+  flex: 1;
+  margin-right: $spacing-sm;
+}
+
+.candidateName {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  font-weight: $font-weight-medium;
+}
+
+.candidateSpec {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  margin-top: 2px;
+}
+
+.candidatePrice {
+  font-size: $font-size-sm;
+  color: $color-warning;
+  font-weight: $font-weight-semibold;
+  flex-shrink: 0;
+}
+
+// ---- 单据工作台（移动端摘要） ----
+
+.workbenchHint {
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+  margin-top: $spacing-sm;
+  line-height: $line-height-loose;
+}
+
+// ---- 终态 ----
+
+.final {
+  margin-top: $spacing-sm;
+  background-color: $color-bg-bubble-ai;
+  border-radius: 0 $radius-lg $radius-lg $radius-lg;
+  padding: $spacing-md;
+  box-shadow: $shadow-card;
+}
+
+.finalText {
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  line-height: $line-height-loose;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.finalMeta {
+  display: block;
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+  margin-top: $spacing-sm;
+}

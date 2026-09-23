@@ -1,0 +1,237 @@
+// 对话页样式（PLAN P3.4）
+@use '@/styles/variables.scss' as *;
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: $color-bg-page;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.scrollPad {
+  height: $spacing-lg;
+}
+
+// ---- 演示模式横幅 ----
+
+.demoBanner {
+  margin: $spacing-md;
+  padding: 12px $spacing-md;
+  background-color: $color-bg-tag-warn;
+  border-radius: $radius-md;
+}
+
+.demoText {
+  font-size: $font-size-xs;
+  color: $color-warning;
+}
+
+// ---- 欢迎区 ----
+
+.welcome {
+  padding: 80px $spacing-lg 40px;
+}
+
+.welcomeTitle {
+  font-size: 40px;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.welcomeDesc {
+  display: block;
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  margin-top: $spacing-sm;
+  margin-bottom: $spacing-lg;
+  line-height: $line-height-loose;
+}
+
+.quickWrap {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.quickChip {
+  background-color: $color-bg-card;
+  border: 1px solid $color-divider;
+  border-radius: $radius-round;
+  padding: 12px 24px;
+  margin-right: $spacing-sm;
+  margin-bottom: $spacing-sm;
+  box-shadow: $shadow-card;
+}
+
+.quickText {
+  font-size: $font-size-sm;
+  color: $color-primary;
+}
+
+// ---- 消息 ----
+
+.message {
+  padding: 0 $spacing-md;
+}
+
+.userRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  margin: $spacing-md 0;
+}
+
+.msgTime {
+  font-size: 20px;
+  color: $color-text-disabled;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.userBubble {
+  max-width: 75%;
+  background-color: $color-bg-bubble-user;
+  border-radius: $radius-lg $radius-lg 0 $radius-lg;
+  padding: $spacing-sm $spacing-md;
+}
+
+.userText {
+  font-size: $font-size-md;
+  color: #ffffff;
+  line-height: $line-height-normal;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.aiRow {
+  display: flex;
+  align-items: flex-start;
+  margin: $spacing-md 0;
+}
+
+.aiAvatar {
+  width: 64px;
+  height: 64px;
+  border-radius: $radius-md;
+  background-color: $color-primary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.aiAvatarText {
+  font-size: $font-size-sm;
+  color: #ffffff;
+  font-weight: $font-weight-semibold;
+}
+
+.aiBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.aiTextBubble {
+  margin-top: $spacing-sm;
+  background-color: $color-bg-bubble-ai;
+  border-radius: 0 $radius-lg $radius-lg $radius-lg;
+  padding: $spacing-sm $spacing-md;
+  box-shadow: $shadow-card;
+}
+
+.aiText {
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  line-height: $line-height-normal;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.typing {
+  padding: $spacing-sm $spacing-lg;
+}
+
+.typingText {
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+}
+
+// ---- 输入栏 ----
+
+.inputBar {
+  background-color: $color-bg-card;
+  border-top: 1px solid $color-divider;
+  padding: $spacing-sm $spacing-md;
+  padding-bottom: calc(16rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+}
+
+.modeRow {
+  display: flex;
+  margin-bottom: $spacing-sm;
+}
+
+.modePill {
+  padding: 6px 24px;
+  border-radius: $radius-round;
+  background-color: $color-bg-page;
+  margin-right: $spacing-sm;
+}
+
+.modeActive {
+  background-color: $color-primary;
+}
+
+.modeText {
+  font-size: $font-size-xs;
+  color: $color-text-secondary;
+}
+
+.modeTextActive {
+  color: #ffffff;
+  font-weight: $font-weight-medium;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+}
+
+.input {
+  flex: 1;
+  min-height: 72px;
+  max-height: 200px;
+  background-color: $color-bg-page;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  width: auto;
+}
+
+.placeholder {
+  color: $color-text-disabled;
+}
+
+.sendBtn {
+  margin-left: $spacing-sm;
+  background-color: $color-primary;
+  border-radius: $radius-md;
+  padding: 16px 28px;
+  flex-shrink: 0;
+}
+
+.sendDisabled {
+  opacity: 0.4;
+}
+
+.sendText {
+  font-size: $font-size-md;
+  color: #ffffff;
+  font-weight: $font-weight-medium;
+}

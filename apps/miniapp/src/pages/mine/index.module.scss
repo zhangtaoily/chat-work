@@ -1,0 +1,327 @@
+// 我的页样式（PLAN P3.4）
+@use '@/styles/variables.scss' as *;
+
+.page {
+  height: 100vh;
+  background-color: $color-bg-page;
+}
+
+.scroll {
+  height: 100%;
+}
+
+.scrollPad {
+  height: $spacing-lg;
+}
+
+// ---- 用户卡片 ----
+
+.userCard {
+  display: flex;
+  align-items: center;
+  margin: $spacing-md;
+  padding: $spacing-lg $spacing-md;
+  background: linear-gradient(135deg, $color-primary 0%, #4080ff 100%);
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card-hover;
+}
+
+.avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: $radius-round;
+  background-color: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: $spacing-md;
+  flex-shrink: 0;
+}
+
+.avatarText {
+  font-size: 32px;
+  font-weight: $font-weight-semibold;
+  color: #ffffff;
+}
+
+.userInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.userName {
+  font-size: 36px;
+  font-weight: $font-weight-semibold;
+  color: #ffffff;
+}
+
+.userMeta {
+  display: block;
+  font-size: $font-size-xs;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 4px;
+}
+
+// ---- 分区 ----
+
+.section {
+  background-color: $color-bg-card;
+  border-radius: $radius-lg;
+  margin: 0 $spacing-md $spacing-md;
+  padding: $spacing-md;
+  box-shadow: $shadow-card;
+}
+
+.sectionHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+
+.sectionTitle {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  margin-bottom: $spacing-sm;
+}
+
+.sectionHead .sectionTitle {
+  margin-bottom: 0;
+}
+
+.sectionAction {
+  font-size: $font-size-sm;
+  color: $color-primary;
+}
+
+// ---- 行 ----
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.rowLabel {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+}
+
+.rowValue {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+}
+
+.rowHint {
+  display: block;
+  font-size: $font-size-xs;
+  color: $color-text-disabled;
+  line-height: $line-height-loose;
+  margin-bottom: $spacing-sm;
+}
+
+// ---- 输入字段 ----
+
+.field {
+  margin-bottom: $spacing-sm;
+}
+
+.fieldLabel {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  margin-bottom: 4px;
+}
+
+.fieldInput {
+  background-color: $color-bg-page;
+  border-radius: $radius-md;
+  padding: 16px $spacing-md;
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+}
+
+// ---- 记忆统计 ----
+
+.statRow {
+  display: flex;
+  margin: $spacing-sm 0;
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $spacing-sm 0;
+  background-color: $color-bg-page;
+  border-radius: $radius-md;
+  margin-right: $spacing-sm;
+}
+
+.stat:last-child {
+  margin-right: 0;
+}
+
+.statNum {
+  font-size: 32px;
+  font-weight: $font-weight-semibold;
+  color: $color-primary;
+}
+
+.statLabel {
+  font-size: 20px;
+  color: $color-text-tertiary;
+  margin-top: 2px;
+}
+
+// ---- 新增记忆 ----
+
+.addRow {
+  display: flex;
+  align-items: flex-end;
+  margin-top: $spacing-sm;
+}
+
+.addInput {
+  flex: 1;
+  min-height: 64px;
+  background-color: $color-bg-page;
+  border-radius: $radius-md;
+  padding: 12px $spacing-md;
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  width: auto;
+}
+
+.addBtn {
+  margin-left: $spacing-sm;
+  background-color: $color-primary;
+  border-radius: $radius-md;
+  padding: 14px 24px;
+  flex-shrink: 0;
+}
+
+.addBtnDisabled {
+  opacity: 0.4;
+}
+
+.addBtnText {
+  font-size: $font-size-sm;
+  color: #ffffff;
+}
+
+// ---- 过滤行 ----
+
+.filterRow {
+  display: flex;
+  align-items: center;
+  margin: $spacing-md 0 $spacing-sm;
+}
+
+.filterPill {
+  padding: 6px 24px;
+  border-radius: $radius-round;
+  background-color: $color-bg-page;
+  margin-right: $spacing-sm;
+}
+
+.filterPillActive {
+  background-color: $color-primary;
+}
+
+.filterPillText {
+  font-size: $font-size-xs;
+  color: $color-text-secondary;
+}
+
+.filterPillTextActive {
+  color: #ffffff;
+}
+
+.clearAll {
+  margin-left: auto;
+  padding: 6px 12px;
+}
+
+.clearAllText {
+  font-size: $font-size-xs;
+  color: $color-error;
+}
+
+// ---- 记忆列表 ----
+
+.memoryList {
+  margin-top: $spacing-sm;
+}
+
+.memoryItem {
+  padding: $spacing-sm 0;
+  border-bottom: 1px solid $color-divider;
+}
+
+.memoryItem:last-child {
+  border-bottom: none;
+}
+
+.memoryHead {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.layerTag {
+  font-size: 20px;
+  color: $color-primary;
+  background-color: $color-bg-tag;
+  padding: 2px 12px;
+  border-radius: $radius-round;
+  margin-right: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.layerTagDept {
+  color: $color-success;
+  background-color: $color-card-accent-success;
+}
+
+.memoryKind {
+  font-size: 20px;
+  color: $color-text-tertiary;
+  margin-right: $spacing-sm;
+}
+
+.memoryTime {
+  font-size: 20px;
+  color: $color-text-disabled;
+  margin-left: auto;
+}
+
+.memoryDelete {
+  font-size: 20px;
+  color: $color-error;
+  margin-left: $spacing-sm;
+  flex-shrink: 0;
+}
+
+.memoryContent {
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  line-height: $line-height-normal;
+}
+
+.memoryMeta {
+  display: block;
+  font-size: 20px;
+  color: $color-text-disabled;
+  margin-top: 4px;
+}
+
+.memoryEmpty {
+  display: block;
+  text-align: center;
+  font-size: $font-size-sm;
+  color: $color-text-disabled;
+  padding: 40px 0;
+}

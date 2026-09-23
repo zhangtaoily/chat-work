@@ -31,7 +31,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent_core import audit, automation
@@ -39,6 +39,7 @@ from agent_core.api import admin, gray
 from agent_core.api.auth import AuthContext, authenticate, set_sso_required, sso_required
 from agent_core.guardrail import confirm_store
 from agent_core.knowledge import store as knowledge_store
+from agent_core.memory import store as memory_store
 from agent_core.pipeline.graph import (
     build_graph,
     build_plan_resume_graph,
@@ -60,6 +61,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await workflow_store.seed_official()
     await automation.restore()
     await syscfg.restore()
+    await memory_store.restore()
     automation.start_scheduler()
     yield
     automation.stop_scheduler()
@@ -221,6 +223,19 @@ class KnowledgeSearchRequest(BaseModel):
 
     query: str = Field(min_length=1)
     top_k: int = Field(default=3, ge=1, le=10)
+
+
+class MemoryAddRequest(BaseModel):
+    """记忆写入请求（PRD 9.2：L2 个人记忆；PIPL 门禁 + 敏感过滤在 store 层）。"""
+
+    content: str = Field(min_length=1)
+    kind: str = "preference"
+
+
+class MemoryConsentRequest(BaseModel):
+    """PIPL 知情同意开关（PRD 9.2：撤回即清除全部个人记忆）。"""
+
+    granted: bool
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -1233,3 +1248,107 @@ async def knowledge_search(req: KnowledgeSearchRequest, request: Request) -> dic
     """
     auth = _knowledge_auth(await _authenticate_or_401(request))
     return await knowledge_store.search(req.query, dept=_dept_of(auth), top_k=req.top_k)
+
+
+# ---- 个人/组织记忆（PLAN P3.3，PRD 9.1-9.3：L2/L3 记忆管理）----
+
+
+def _memory_auth(auth: AuthContext | None) -> AuthContext:
+    """记忆端点统一认证门禁（恒需认证，口径对齐知识库端点）。"""
+    if auth is None:
+        raise HTTPException(status_code=401, detail="记忆管理需要认证")
+    return auth
+
+
+@app.get("/memory/list")
+async def memory_list(request: Request, layer: str | None = None) -> dict[str, Any]:
+    """记忆清单（PRD 9.2 可感知性）：L2 本人 + L3 本科室 + 面板统计与同意状态。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    dept = _dept_of(auth)
+    items = memory_store.list_entries(user_id=auth.user_id, dept=dept, layer=layer)
+    return {
+        "items": items,
+        "count": len(items),
+        "stats": memory_store.stats(auth.user_id, dept),
+        "consent": memory_store.consent_of(auth.user_id),
+    }
+
+
+@app.post("/memory/add")
+async def memory_add(req: MemoryAddRequest, request: Request) -> dict[str, Any]:
+    """手动写入个人记忆（PRD 9.2）：PIPL 门禁 + 敏感过滤在 store 层，违规 → 400。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    try:
+        return await memory_store.add(
+            user_id=auth.user_id,
+            content=req.content,
+            kind=req.kind,
+            source="ask",
+            dept=_dept_of(auth) or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/memory/{entry_id}")
+async def memory_delete(entry_id: str, request: Request) -> dict[str, Any]:
+    """删除单条（PRD 9.2 可感知性）：L2 仅本人 / L3 仅科室管理员。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    if memory_store.get(entry_id) is None:
+        raise HTTPException(status_code=404, detail="记忆条目不存在")
+    try:
+        await memory_store.remove(
+            entry_id=entry_id,
+            user_id=auth.user_id,
+            dept=_dept_of(auth),
+            roles=list(auth.roles),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"status": "ok", "entry_id": entry_id, "deleted": True}
+
+
+@app.post("/memory/clear")
+async def memory_clear(request: Request) -> dict[str, Any]:
+    """一键清除个人记忆（PRD 9.2 遗忘权：用户可随时要求删除）。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    removed = await memory_store.clear_personal(user_id=auth.user_id)
+    return {"status": "ok", "purged": removed}
+
+
+@app.post("/memory/consent")
+async def memory_consent(req: MemoryConsentRequest, request: Request) -> dict[str, Any]:
+    """PIPL 知情同意开关（PRD 9.2）：同意后启用 L2；撤回即清除全部个人记忆。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    res = await memory_store.set_consent(user_id=auth.user_id, granted=req.granted)
+    return {"status": "ok", **res}
+
+
+@app.post("/memory/{entry_id}/promote")
+async def memory_promote(entry_id: str, request: Request) -> dict[str, Any]:
+    """L2 → L3 升级（PRD 9.3）：仅科室管理员提炼；敏感词二次校验在 store 层。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    if memory_store.get(entry_id) is None:
+        raise HTTPException(status_code=404, detail="记忆条目不存在")
+    try:
+        entry = await memory_store.promote(
+            entry_id=entry_id,
+            user_id=auth.user_id,
+            dept=_dept_of(auth),
+            roles=list(auth.roles),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"status": "ok", "entry": entry}
+
+
+@app.get("/memory/export.md")
+async def memory_export(request: Request) -> Response:
+    """MEMORY.md 式导出（ARCHITECTURE 4.9 可迁移：Markdown 附件下载）。"""
+    auth = _memory_auth(await _authenticate_or_401(request))
+    md = memory_store.export_md(auth.user_id, _dept_of(auth))
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=MEMORY-{auth.user_id}.md"},
+    )

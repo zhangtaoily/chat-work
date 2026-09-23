@@ -1,0 +1,31 @@
+{
+  "name": "u8__query_gl_balance",
+  "description": "查询 U8 指定期间科目余额表：期初/本期借/本期贷/期末 + 本期合计，支持科目关键词过滤（只读）",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "period": {
+        "type": "string",
+        "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+        "title": "会计期间",
+        "description": "格式 YYYY-MM（如 2026-09）"
+      },
+      "subject": {
+        "type": "string",
+        "title": "科目关键词",
+        "description": "科目名称模糊过滤（如「银行」「应收」），缺省查全部科目"
+      }
+    },
+    "required": ["period"]
+  },
+  "annotations": {
+    "title": "U8 科目余额表",
+    "readOnlyHint": true,
+    "_meta": {
+      "humanConfirmation": "none",
+      "idempotencyRequired": false,
+      "rw": "read",
+      "requiredPermissions": ["u8:gl:read"]
+    }
+  }
+}

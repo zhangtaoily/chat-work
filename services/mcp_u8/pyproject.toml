@@ -1,0 +1,28 @@
+# mcp-u8：U8 财务系统 MCP Server（工具前缀 u8__，只读，ARCHITECTURE 4.2）
+[project]
+name = "mcp-u8"
+version = "0.1.0"
+description = "U8 MCP Server：科目余额表/凭证明细查询（P3.1 只读，PRD 7.1）"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0,<2", # 官方 Python SDK 1.x（2.x 重命名 FastMCP→MCPServer，迁移另行评估）
+    "httpx>=0.27",
+    "pydantic>=2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
