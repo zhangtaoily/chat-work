@@ -32,6 +32,8 @@ export const bridge = {
   // ---- 版本与自动更新（PRD 5.5.2 / 5.5.6） ----
   // 当前应用版本（authedFetch 随请求带 X-Client-Version，服务端强制升级协商）
   getAppVersion: (): Promise<string> => ipcRenderer.invoke(IpcChannel.AppGetVersion),
+  // 外部链接跳转（管理后台 Web 页面等）：经系统默认浏览器打开
+  openExternal: (url: string) => ipcRenderer.invoke(IpcChannel.OpenExternal, url),
   // 检查更新（返回 UpdaterState；开发态 not-available）
   updaterCheck: (): Promise<UpdaterState> => ipcRenderer.invoke(IpcChannel.UpdaterCheck),
   // 下载已发现的更新（resolve 时下载完成）

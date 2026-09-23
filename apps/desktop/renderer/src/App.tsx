@@ -1,8 +1,20 @@
 // 会话主界面：消息流 + SSE 消费 + HITL 确认交互（PRD 5.2 场景 1-1）
 // Electron：SSO 登录门 + 身份由 id_token.sub 注入（PRD 8.5）；web 冒烟模式无桥直传（MVP 惯例）
-import { Alert, Button, ConfigProvider, Input, Layout, Modal, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, ConfigProvider, Input, Layout, Menu, Modal, Space, Spin, Tag, Typography } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
-import { DownloadOutlined, LogoutOutlined, SafetyOutlined, SendOutlined } from '@ant-design/icons'
+import {
+  AppstoreOutlined,
+  BookOutlined,
+  BulbOutlined,
+  ClockCircleOutlined,
+  CloudServerOutlined,
+  CommentOutlined,
+  DownloadOutlined,
+  LogoutOutlined,
+  SafetyOutlined,
+  SendOutlined,
+  SettingOutlined
+} from '@ant-design/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthStatus } from '../../main/auth-core'
 import type { UpdaterState } from '../../main/updater'
@@ -15,12 +27,73 @@ import {
   type Turn,
   type UserTurn
 } from './chat/chatModel'
-import { ClientVersionTooLowError, ConfirmationExpiredError, streamChat, submitConfirmation } from './lib/api'
+import {
+  AGENT_CORE_URL,
+  ClientVersionTooLowError,
+  ConfirmationExpiredError,
+  streamChat,
+  submitConfirmation
+} from './lib/api'
+import MarketView from './views/MarketView'
+import KnowledgeView from './views/KnowledgeView'
+import AutomationView from './views/AutomationView'
+import MemoryView from './views/MemoryView'
+import SettingsView from './views/SettingsView'
 
 const bridge = window.chatwork
 
 // web 冒烟模式（vite dev:web，无 preload 桥）沿用 MVP 直传身份
 const WEB_SMOKE_USER_ID = 'u001'
+
+// 左侧导航视图（对齐 prototype.html：工作台/个人两组菜单）
+type ViewKey = 'chat' | 'market' | 'kb' | 'auto' | 'memory' | 'settings'
+
+const viewTitles: Record<ViewKey, string> = {
+  chat: 'Chat-Work 企业内网 AI Agent',
+  market: '技能市场',
+  kb: '知识库',
+  auto: '自动化',
+  memory: '我的记忆',
+  settings: '设置'
+}
+
+const menuItems = [
+  {
+    type: 'group' as const,
+    label: '工作台',
+    children: [
+      { key: 'chat', icon: <CommentOutlined />, label: '会话' },
+      { key: 'market', icon: <AppstoreOutlined />, label: '技能市场' },
+      { key: 'kb', icon: <BookOutlined />, label: '知识库' },
+      { key: 'auto', icon: <ClockCircleOutlined />, label: '自动化' },
+      {
+        key: 'admin',
+        icon: <CloudServerOutlined />,
+        label: (
+          <span>
+            管理后台 <Tag style={{ marginInlineStart: 4 }}>管理员</Tag>
+          </span>
+        )
+      }
+    ]
+  },
+  {
+    type: 'group' as const,
+    label: '个人',
+    children: [
+      {
+        key: 'memory',
+        icon: <BulbOutlined />,
+        label: (
+          <span>
+            我的记忆 <Tag style={{ marginInlineStart: 4 }}>P3</Tag>
+          </span>
+        )
+      },
+      { key: 'settings', icon: <SettingOutlined />, label: '设置' }
+    ]
+  }
+]
 
 function loggedOutStatus(): AuthStatus {
   return { loggedIn: false, userId: '', userName: '', expiresAt: 0 }
@@ -38,6 +111,8 @@ export default function App() {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [confirmBusy, setConfirmBusy] = useState(false)
+  // 当前视图（默认会话；对齐 prototype 左侧导航）
+  const [view, setView] = useState<ViewKey>('chat')
   // null = 认证状态检测中；web 冒烟模式无桥，视为已登录的直传身份
   const [auth, setAuth] = useState<AuthStatus | null>(
     bridge
@@ -85,6 +160,27 @@ export default function App() {
       setAuthBusy(false)
     }
   }, [])
+
+  // 管理后台：独立 Web 页面（PRD 5.6 分阶段形态），权限由服务端校验
+  const openAdmin = useCallback(() => {
+    const url = `${AGENT_CORE_URL}/admin`
+    if (bridge) {
+      void bridge.openExternal(url)
+    } else {
+      window.open(url, '_blank')
+    }
+  }, [])
+
+  const handleMenuClick = useCallback(
+    (info: { key: string }) => {
+      if (info.key === 'admin') {
+        openAdmin()
+        return
+      }
+      setView(info.key as ViewKey)
+    },
+    [openAdmin]
+  )
 
   useEffect(() => {
     streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight })
@@ -300,124 +396,169 @@ export default function App() {
   return (
     <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#1677ff' } }}>
       <Layout style={{ height: '100vh' }}>
-        <Layout.Header
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: '#001529'
-          }}
-        >
-          <Typography.Title level={4} style={{ color: '#fff', margin: 0 }}>
-            Chat-Work 企业内网 AI Agent
-          </Typography.Title>
-          <Space size={8}>
-            <Tag color="blue">
-              当前用户：{auth.userName ? `${auth.userName}（${auth.userId}）` : auth.userId}
-            </Tag>
-            {bridge ? (
-              <Button
-                size="small"
-                ghost
-                icon={<LogoutOutlined />}
-                loading={authBusy}
-                onClick={() => {
-                  void handleLogout()
-                }}
-              >
-                登出
-              </Button>
-            ) : (
-              <Tag color="purple">MVP · OA 技能已接入</Tag>
-            )}
-          </Space>
-        </Layout.Header>
-
-        <Layout.Content
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            background: '#f5f5f5',
-            overflow: 'hidden'
-          }}
-        >
+        <Layout.Sider width={200} style={{ overflow: 'auto' }}>
           <div
-            ref={streamRef}
             style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '24px 16%',
-              boxSizing: 'border-box'
+              height: 32,
+              margin: 16,
+              color: '#fff',
+              fontWeight: 600,
+              textAlign: 'center',
+              lineHeight: '32px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: 6
             }}
           >
-            {turns.length === 0 ? (
-              <div style={{ textAlign: 'center', marginTop: 80 }}>
-                <Typography.Title level={3} type="secondary">
-                  你好，我是你的工作助手
-                </Typography.Title>
-                <Typography.Paragraph type="secondary">
-                  可以帮你提交请假申请、查询待办审批（写入操作需二次确认）
-                </Typography.Paragraph>
-                <Space wrap style={{ justifyContent: 'center' }}>
-                  {EXAMPLE_PROMPTS.map((prompt) => (
+            Chat-Work Agent
+          </div>
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[view]}
+            onClick={handleMenuClick}
+            items={menuItems}
+          />
+        </Layout.Sider>
+        <Layout>
+          <Layout.Header
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#001529'
+            }}
+          >
+            <Typography.Title level={4} style={{ color: '#fff', margin: 0 }}>
+              {view === 'chat' ? 'Chat-Work 企业内网 AI Agent' : viewTitles[view]}
+            </Typography.Title>
+            <Space size={8}>
+              <Tag color="blue">
+                当前用户：{auth.userName ? `${auth.userName}（${auth.userId}）` : auth.userId}
+              </Tag>
+              {bridge ? (
+                <Button
+                  size="small"
+                  ghost
+                  icon={<LogoutOutlined />}
+                  loading={authBusy}
+                  onClick={() => {
+                    void handleLogout()
+                  }}
+                >
+                  登出
+                </Button>
+              ) : (
+                <Tag color="purple">MVP · OA 技能已接入</Tag>
+              )}
+            </Space>
+          </Layout.Header>
+
+          <Layout.Content
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              background: '#f5f5f5',
+              overflow: 'hidden'
+            }}
+          >
+            {view === 'chat' ? (
+              <>
+                <div
+                  ref={streamRef}
+                  style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '24px 16%',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {turns.length === 0 ? (
+                    <div style={{ textAlign: 'center', marginTop: 80 }}>
+                      <Typography.Title level={3} type="secondary">
+                        你好，我是你的工作助手
+                      </Typography.Title>
+                      <Typography.Paragraph type="secondary">
+                        可以帮你提交请假申请、查询待办审批（写入操作需二次确认）
+                      </Typography.Paragraph>
+                      <Space wrap style={{ justifyContent: 'center' }}>
+                        {EXAMPLE_PROMPTS.map((prompt) => (
+                          <Button
+                            key={prompt}
+                            onClick={() => {
+                              setInput(prompt)
+                            }}
+                          >
+                            {prompt}
+                          </Button>
+                        ))}
+                      </Space>
+                    </div>
+                  ) : (
+                    turns.map((turn) => (
+                      <ChatTurnView
+                        key={turn.id}
+                        turn={turn}
+                        confirmBusy={confirmBusy}
+                        streaming={streaming}
+                        onConfirm={(token, action) => {
+                          void handleConfirm(token, action)
+                        }}
+                        onExpire={handleExpire}
+                        onQuickReply={(text) => {
+                          void sendText(text)
+                        }}
+                      />
+                    ))
+                  )}
+                </div>
+
+                <div
+                  style={{ padding: '12px 16%', background: '#fff', borderTop: '1px solid #f0f0f0' }}
+                >
+                  <Space.Compact style={{ width: '100%' }}>
+                    <Input
+                      size="large"
+                      value={input}
+                      placeholder={
+                        streaming ? '助手正在处理…' : '输入消息，例如：我下周三想请一天年假'
+                      }
+                      disabled={streaming}
+                      onChange={(e) => setInput(e.target.value)}
+                      onPressEnter={() => {
+                        void send()
+                      }}
+                    />
                     <Button
-                      key={prompt}
+                      type="primary"
+                      size="large"
+                      icon={<SendOutlined />}
+                      loading={streaming}
                       onClick={() => {
-                        setInput(prompt)
+                        void send()
                       }}
                     >
-                      {prompt}
+                      发送
                     </Button>
-                  ))}
-                </Space>
-              </div>
+                  </Space.Compact>
+                </div>
+              </>
             ) : (
-              turns.map((turn) => (
-                <ChatTurnView
-                  key={turn.id}
-                  turn={turn}
-                  confirmBusy={confirmBusy}
-                  streaming={streaming}
-                  onConfirm={(token, action) => {
-                    void handleConfirm(token, action)
-                  }}
-                  onExpire={handleExpire}
-                  onQuickReply={(text) => {
-                    void sendText(text)
-                  }}
-                />
-              ))
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {view === 'market' ? (
+                  <MarketView />
+                ) : view === 'kb' ? (
+                  <KnowledgeView />
+                ) : view === 'auto' ? (
+                  <AutomationView />
+                ) : view === 'memory' ? (
+                  <MemoryView />
+                ) : (
+                  <SettingsView />
+                )}
+              </div>
             )}
-          </div>
-
-          <div style={{ padding: '12px 16%', background: '#fff', borderTop: '1px solid #f0f0f0' }}>
-            <Space.Compact style={{ width: '100%' }}>
-              <Input
-                size="large"
-                value={input}
-                placeholder={
-                  streaming ? '助手正在处理…' : '输入消息，例如：我下周三想请一天年假'
-                }
-                disabled={streaming}
-                onChange={(e) => setInput(e.target.value)}
-                onPressEnter={() => {
-                  void send()
-                }}
-              />
-              <Button
-                type="primary"
-                size="large"
-                icon={<SendOutlined />}
-                loading={streaming}
-                onClick={() => {
-                  void send()
-                }}
-              >
-                发送
-              </Button>
-            </Space.Compact>
-          </div>
-        </Layout.Content>
+          </Layout.Content>
+        </Layout>
       </Layout>
 
       {/* 强制升级弹窗（client_version_too_low）：不可关闭，更新后重启生效（PRD 5.5.6） */}

@@ -1,6 +1,6 @@
 // IPC 白名单：枚举式通道注册 + zod 参数校验（PRD 5.5.3）
 // 安全红线：渲染层不得调用白名单之外的任何主进程能力
-import { app, dialog, ipcMain, Notification } from 'electron'
+import { app, dialog, ipcMain, Notification, shell } from 'electron'
 import { promises as fsp } from 'node:fs'
 import { z } from 'zod'
 import { forceRefresh, getAccessToken, getAuthStatus, login, logout } from './auth'
@@ -32,6 +32,11 @@ export const ipcSchemas = {
   [IpcChannel.AuthGetStatus]: z.undefined(),
   // ---- 版本与自动更新（PRD 5.5.2 / 5.5.6）：无参数通道 ----
   [IpcChannel.AppGetVersion]: z.undefined(),
+  // 管理后台等外部链接跳转：仅放行 http(s)（防 file:// 等危险协议）
+  [IpcChannel.OpenExternal]: z.string().url().refine(
+    (url) => url.startsWith('http://') || url.startsWith('https://'),
+    { message: '仅允许 http(s) 链接' }
+  ),
   [IpcChannel.UpdaterCheck]: z.undefined(),
   [IpcChannel.UpdaterDownload]: z.undefined(),
   [IpcChannel.UpdaterInstall]: z.undefined()
@@ -103,6 +108,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannel.AppGetVersion, async (_event, raw: unknown) => {
     ipcSchemas[IpcChannel.AppGetVersion].parse(raw)
     return app.getVersion()
+  })
+
+  // 外部链接跳转（管理后台 Web 页面等）：经系统默认浏览器打开
+  ipcMain.handle(IpcChannel.OpenExternal, async (_event, raw: unknown) => {
+    const url = ipcSchemas[IpcChannel.OpenExternal].parse(raw)
+    await shell.openExternal(url)
+    return null
   })
 
   // 自动更新：检查更新（返回 UpdaterState；开发态返回 not-available）

@@ -10,6 +10,7 @@ export const IpcChannel = {
   AuthRefresh: 'auth:refresh',
   AuthGetStatus: 'auth:getStatus',
   AppGetVersion: 'app:getVersion',
+  OpenExternal: 'app:openExternal',
   UpdaterCheck: 'updater:check',
   UpdaterDownload: 'updater:download',
   UpdaterInstall: 'updater:install'
