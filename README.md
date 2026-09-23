@@ -93,6 +93,8 @@ chat-work/
 
 ### 启动步骤
 
+> **Windows 一键启动**：双击根目录 [start-all.bat](./start-all.bat)——9 个后端服务（mock_idp、7 个 MCP Server、agent-core）在**后台隐藏运行**（不弹窗口，日志写入 `logs/`，端口已被占用时自动跳过），最终只保留 1 个控制台窗口运行 **Electron 桌面端**。追加参数可改浏览器预览：`start-all.bat web`。停止后台服务：双击 [stop-all.bat](./stop-all.bat)。各服务目录下也有独立 `start.bat` 可单独启动（如 [services/mcp_oa/start.bat](./services/mcp_oa/start.bat)、[apps/desktop/start.bat](./apps/desktop/start.bat)）。
+
 ```bash
 # 0. 安装依赖
 pnpm install                              # TS 侧
@@ -117,6 +119,8 @@ cd services/agent_core && uvicorn agent_core.api.main:app --port 8011
 pnpm --filter @chat-work/desktop dev:web       # Web 预览 :5173
 pnpm --filter @chat-work/desktop dev           # Electron 桌面端
 ```
+
+> **启动桌面端（Electron）**：`pnpm --filter @chat-work/desktop dev`，或双击 [apps/desktop/start.bat](./apps/desktop/start.bat)。需后端已启动（`start-all.bat` 或上表逐个启动），否则登录不可用；`dev:web` 仅为浏览器预览模式（[apps/desktop/start-web.bat](./apps/desktop/start-web.bat)）。
 
 agent-core 通过 env `MCP_OA_URL` ~ `MCP_U8_URL`（默认 `http://127.0.0.1:8001` ~ `:8007`）发现各 MCP 服务，详见 [agent_core/config.py](./services/agent_core/agent_core/config.py)。
 
