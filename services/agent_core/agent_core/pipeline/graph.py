@@ -40,6 +40,7 @@ from typing import Annotated, Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from agent_core import audit
+from agent_core.automation import store as automation_store
 from agent_core.guardrail import confirm_store
 from agent_core.knowledge import store as knowledge_store
 from agent_core.mcp_client.bi import call_bi_tool
@@ -50,7 +51,7 @@ from agent_core.mcp_client.oa import McpToolError, call_oa_tool
 from agent_core.mcp_client.u8 import call_u8_tool
 from agent_core.mcp_client.wms import call_wms_tool
 from agent_core.memory import store as memory_store
-from agent_core.pipeline import permissions, rules, slots
+from agent_core.pipeline import llm, permissions, rules, slots
 from agent_core.skills import store
 from agent_core.skills.registry import get_skill, match_skill
 from agent_core.workflow import store as workflow_store
@@ -130,8 +131,24 @@ async def intent_node(state: ChatState) -> dict[str, Any]:
     message = state.get("message", "")
     skill = match_skill(message)
     intent_name = skill["name"] if skill else "chat"
-    # TODO: LLM_BASE_URL 配置时走小模型路由（LangChain/自研均可），规则结果降级为后校验
     events = [_stage("intent")]
+    llm_slots: dict[str, Any] | None = None
+    if skill is None and llm.enabled():
+        # LLM 兜底路由（规则优先，LLM 补充）：关键词未命中时由小模型选技能；
+        # 抽取结果随 intent 透传给 extract 节点复用（一轮仅一次 LLM 调用）
+        llm_slots = await llm.extract_slots(message)
+        if llm_slots and llm_slots["skill"] and llm_slots["skill"] != "chat":
+            llm_skill = get_skill(llm_slots["skill"])
+            if llm_skill is not None:
+                skill = llm_skill
+                intent_name = llm_skill["name"]
+                events.append(
+                    {
+                        "type": "stage_progress",
+                        "stage": "intent",
+                        "message": "LLM 识别技能：" + llm_skill["title"],
+                    }
+                )
     memory_hits: list[dict[str, Any]] | None = None
     if intent_name not in {"memory_save"}:  # 记忆写入轮自身不注入（避免自我引用）
         try:
@@ -152,8 +169,16 @@ async def intent_node(state: ChatState) -> dict[str, Any]:
                     ),
                 }
             )
+    intent: dict[str, Any] = {
+        "name": intent_name,
+        # 规则命中 1.0 / LLM 兜底命中 0.8 / 未命中 0.5（置信度口径）
+        "confidence": 0.8 if (skill and llm_slots is not None) else (1.0 if skill else 0.5),
+    }
+    if llm_slots is not None:
+        intent["source"] = "llm"  # route/extract 按 LLM 兜底结果承接
+        intent["llm_slots"] = llm_slots
     return {
-        "intent": {"name": intent_name, "confidence": 1.0 if skill else 0.5},
+        "intent": intent,
         "memory_hits": memory_hits,
         "events": events,
     }
@@ -169,6 +194,11 @@ async def route_node(state: ChatState) -> dict[str, Any]:
     """
     events = [_stage("route")]
     skill = match_skill(state.get("message", ""))
+    if skill is None:
+        # intent 阶段 LLM 兜底识别的技能承接（规则层无关键词，不再重复识别）
+        intent = state.get("intent") or {}
+        if intent.get("source") == "llm" and intent.get("name") not in {None, "chat"}:
+            skill = get_skill(intent["name"])
     pending = await slots.get_pending(state["user_id"], state["session_id"])
     if skill is None and pending:
         skill = get_skill(pending["skill_name"])
@@ -187,6 +217,7 @@ async def extract_node(state: ChatState) -> dict[str, Any]:
     """阶段3 参数提取（含知识注入点2，PRD 9.5.3）：抽取字段 + 查余额 +
     时长自动计算；技能绑定知识标签且存在缺失必填时注入填写说明提示。"""
     result = await _extract_fields(state)
+    result = await _llm_fill_missing(state, result)
     skill = state.get("skill")
     tags = (skill or {}).get("knowledge_tags")
     if skill and tags and skill.get("required_fields"):
@@ -209,6 +240,55 @@ async def extract_node(state: ChatState) -> dict[str, Any]:
                     }
                 )
     return result
+
+
+async def _llm_fill_missing(
+    state: ChatState, result: dict[str, Any]
+) -> dict[str, Any]:
+    """LLM 补槽位（规则优先，LLM 兜底）：规则未抽齐必填时由小模型补充。
+
+    只补缺失字段、不覆盖规则值；intent 阶段已抽取过则直接复用（一轮一次
+    LLM 调用）。技能分支已挂 pending 草稿的（请假/CRM/自动化）补齐后重挂
+    并再次发 draft_card（桌面端 latest-draft-wins，重复发卡安全）。
+    """
+    skill = state.get("skill")
+    if not skill or not skill.get("required_fields") or not llm.enabled():
+        return result
+    draft = dict(result.get("draft") or {})
+    missing = [f for f in skill["required_fields"] if f not in draft]
+    if not missing:
+        return result
+    intent = state.get("intent") or {}
+    slots_result = intent.get("llm_slots") or await llm.extract_slots(
+        state.get("message", "")
+    )
+    fields = (slots_result or {}).get("fields") or {}
+    filled = [f for f in missing if fields.get(f) not in (None, "")]
+    if not filled:
+        return result
+    for field in filled:
+        draft[field] = {"value": fields[field], "source": "llm"}
+    events = list(result.get("events") or [])
+    events.append(
+        {
+            "type": "stage_progress",
+            "stage": "extract",
+            "message": "LLM 补充参数：" + "、".join(filled),
+        }
+    )
+    pending = await slots.get_pending(state["user_id"], state["session_id"])
+    if pending and pending["skill_name"] == skill["name"]:
+        still_missing = [f for f in skill["required_fields"] if f not in draft]
+        await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
+        events.append(
+            {
+                "type": "draft_card",
+                "draft": draft,
+                "missing_fields": still_missing,
+                "draft_version": 1,
+            }
+        )
+    return {**result, "draft": draft, "events": events}
 
 
 async def _extract_fields(state: ChatState) -> dict[str, Any]:
@@ -411,6 +491,29 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
         if content:
             return {"draft": {"content": {"value": content, "source": "ask"}}, "events": events}
         return {"draft": {}, "events": events}
+
+    # 自动化任务/定时提醒（PRD 3.6.2 chat 入口）：时刻 + 正文分段收集
+    # （同请假分段收集范式：合并挂起草稿，补问轮续上下文）
+    if skill["name"] == "automation_task_create":
+        pending = await slots.get_pending(state["user_id"], state["session_id"])
+        draft = dict(pending["draft"]) if pending else {}
+        at = rules.extract_reminder_time(state.get("message", ""))
+        if at:
+            draft["remind_at"] = {"value": at, "source": "ask"}
+        content = rules.extract_reminder_content(state.get("message", ""))
+        if content:
+            draft["content"] = {"value": content, "source": "ask"}
+        missing = [f for f in skill["required_fields"] if f not in draft]
+        await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
+        events.append(
+            {
+                "type": "draft_card",
+                "draft": draft,
+                "missing_fields": missing,
+                "draft_version": 1,
+            }
+        )
+        return {"draft": draft, "events": events}
 
     # ---- P3.1 MES / U8（PLAN P3.1，PRD 7.1）：只读查询，参数可选分流 ----
 
@@ -680,6 +783,14 @@ async def validate_node(state: ChatState) -> dict[str, Any]:
     if skill["name"] == "crm_sales_order_entry":
         validation = _validate_crm_order(state.get("draft") or {}, skill)
         return {"validation": validation, "events": events}
+    # 自动化任务/定时提醒：仅必填缺失校验（时刻过期等防线在 store 层）
+    if skill["name"] == "automation_task_create":
+        draft = state.get("draft") or {}
+        missing = [f for f in skill["required_fields"] if f not in draft]
+        return {
+            "validation": {"missing_fields": missing, "errors": [], "passed": not missing},
+            "events": events,
+        }
     # 跨系统编排：仅必填缺失校验（缺失触发补问；明细/联系人细节由
     # workflow 步骤执行与 MCP 契约校验兜底）
     if skill["name"] == "cross_system_order_flow":
@@ -1268,6 +1379,34 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
                 return {"tool_result": {"error": str(exc)}, "events": events}
             return {"tool_result": entry, "events": events}
 
+        # 自动化任务/定时提醒（PRD 3.6.2 chat 入口）：进程内直调
+        # automation.create（防线在 store 层：只读技能/once 过期/单用户 ≤3）；
+        # 执行体 send_reminder 由调度器到点经子图渲染提醒入信箱/企微
+        if skill and skill["name"] == "automation_task_create":
+            draft = state.get("draft") or {}
+            auth = state.get("auth") or {}
+            try:
+                task = await automation_store.create(
+                    name=str(draft["content"]["value"]),
+                    skill="send_reminder",
+                    params={"content": {"value": draft["content"]["value"], "source": "ask"}},
+                    schedule={"type": "once", "at": draft["remind_at"]["value"]},
+                    owner=state["user_id"],
+                    owner_auth={k: auth.get(k) for k in ("user_id", "dept", "roles")},
+                )
+            except ValueError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": {"task": task}, "events": events}
+
+        # 定时提醒执行体（automation 调度器触发，不参与 chat 路由）：
+        # 渲染提醒正文，final 文本即通知内容（record_run 回写信箱）
+        if skill and skill["name"] == "send_reminder":
+            draft = state.get("draft") or {}
+            return {
+                "tool_result": {"content": draft.get("content", {}).get("value", "")},
+                "events": events,
+            }
+
         # 技术备件巡检：备件库存水位 + 备件预警（SKU 可选）
         if skill and skill["name"] == "tech_inventory":
             draft = state.get("draft") or {}
@@ -1819,6 +1958,29 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
             cards = [{"type": "memory_save", "entry": result}]
         events.append({"type": "final", "text": text, "cards": cards})
         return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # 自动化任务/定时提醒：创建确认（可感知性——任务号 + 触发时间，可到自动化页管理）
+    if skill["name"] == "automation_task_create" and isinstance(result, dict):
+        if "error" in result:
+            text = f"定时提醒创建失败：{result['error']}"
+            cards = []
+        else:
+            await slots.clear_pending(state["user_id"], state["session_id"])
+            task = result.get("task") or {}
+            at = str((task.get("schedule") or {}).get("at", "")).replace("T", " ")
+            text = (
+                f"已创建定时提醒「{task.get('name', '')}」，将于 {at} 提醒你"
+                f"（任务号 {task.get('id', '')}，可在自动化页查看或取消）。"
+            )
+            cards = [{"type": "automation_task_create", "task": task}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # 定时提醒执行体（调度器触发）：提醒正文即通知内容
+    if skill["name"] == "send_reminder" and isinstance(result, dict):
+        text = f"提醒：{result.get('content', '')}"
+        events.append({"type": "final", "text": text, "cards": []})
+        return {"final": {"text": text, "cards": []}, "events": events}
 
     # ---- P2.6 跨系统编排渲染（PLAN P2.6，PRD 6.3）：workflow run 终态 ----
     if skill["name"] == "cross_system_order_flow" and isinstance(result, dict):

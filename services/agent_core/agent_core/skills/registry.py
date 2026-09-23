@@ -441,6 +441,40 @@ SKILLS: dict[str, dict[str, Any]] = {
         "ask_messages": {},
         "required_fields": [],
     },
+    # ---- 自动化任务/定时提醒（PRD 3.6.2 chat 入口）----
+    # 创建动作本身进程内直调 automation.create（同 memory_save 范式：
+    # rw=read 无 HITL；防线在 store 层——只读技能/once 过期/单用户 ≤3）。
+    # 执行体 send_reminder 不参与路由（intent_patterns 空，仅调度器经
+    # 子图调用），运行时渲染提醒文本入信箱/企微。
+    "automation_task_create": {
+        "name": "automation_task_create",
+        "title": "定时提醒",
+        "rw": "read",
+        "mode": "ask",
+        "dept_scope": None,
+        "intent_patterns": ["自动化任务", "定时任务", "定时提醒", "提醒我"],
+        "read_tools": [],
+        "write_tool": None,
+        "required_roles": [],
+        "ask_messages": {
+            "remind_at": "请问什么时候提醒你？（例如：今天下午5点、明天上午9点半）",
+            "content": "请问要提醒你什么内容？",
+        },
+        "required_fields": ["remind_at", "content"],
+    },
+    "send_reminder": {
+        "name": "send_reminder",
+        "title": "定时提醒执行",
+        "rw": "read",
+        "mode": "ask",
+        "dept_scope": None,
+        "intent_patterns": [],
+        "read_tools": [],
+        "write_tool": None,
+        "required_roles": [],
+        "ask_messages": {},
+        "required_fields": [],
+    },
 }
 
 

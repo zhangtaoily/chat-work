@@ -370,6 +370,60 @@ def extract_memory_content(message: str) -> str | None:
     return None
 
 
+# ---- 自动化任务/定时提醒（PRD 3.6.2 chat 入口）：时刻 + 提醒内容抽取 ----
+# 「今天下午5点」「明天上午9点半」「后天晚上8点15分」「明天12点30分」；
+# 附带兼容 HH:MM（「明天 09:30」）
+_REMINDER_TIME = re.compile(
+    r"(今天|明天|后天)?\s*(上午|早上|中午|下午|晚上)?\s*(\d{1,2})\s*[点时:：]\s*(?:(\d{1,2})\s*分?|半)?"
+)
+_DAY_OFFSET = {"今天": 0, "明天": 1, "后天": 2}
+# 下午/晚上按 +12h 归一（12 点除外：「下午12点」即正午）；上午/早上/中午原值
+_PM_MERIDIEM = ("下午", "晚上")
+
+# 提醒正文：①「（帮我）提醒我 X」②「创建/设置一个自动化任务/定时提醒 X」
+_REMINDER_CONTENT_PATTERNS = (
+    re.compile(r"(?:请|麻烦)?(?:帮我)?提醒我[：:，,]?\s*(.+)", re.DOTALL),
+    re.compile(
+        r"(?:请|麻烦)?(?:帮我)?(?:创建|新建|建|定|设置)(?:一?个)?(?:自动化任务|定时任务|定时提醒)[，,：:\s]*(.+)",
+        re.DOTALL,
+    ),
+)
+
+
+def extract_reminder_time(message: str) -> str | None:
+    """解析中文时刻 → ISO datetime 串（once 调度用，PRD 3.6.2）。
+
+    支持「今天/明天/后天 + 上午/早上/中午/下午/晚上 + N点[N分/半]」；
+    下午/晚上 +12h 归一。时刻是否过期不在此判定（automation store 防线：
+    once 已过期拒绝，错误文案回传对话）。
+    """
+    m = _REMINDER_TIME.search(message)
+    if not m:
+        return None
+    day_kw, meridiem, hour_s, minute_s = m.groups()
+    hour, minute = int(hour_s), int(minute_s) if minute_s else (30 if "半" in m.group(0) else 0)
+    if hour > 23 or minute > 59:
+        return None
+    if meridiem in _PM_MERIDIEM and hour < 12:
+        hour += 12
+    base = _today() + timedelta(days=_DAY_OFFSET.get(day_kw or "", 0))
+    return datetime(base.year, base.month, base.day, hour, minute).isoformat()
+
+
+def extract_reminder_content(message: str) -> str | None:
+    """抽取提醒正文（「提醒我晚上联络活动」→「晚上联络活动」，PRD 3.6.2）。
+
+    引导词前缀剥离后取剩余正文；未命中返回 None（走补问）。
+    """
+    for pat in _REMINDER_CONTENT_PATTERNS:
+        m = pat.search(message)
+        if m:
+            content = (m.group(m.lastindex) or "").strip().strip("。.！!？? ")
+            if content:
+                return content
+    return None
+
+
 def extract_customer_keyword(message: str, allow_bare: bool = True) -> str | None:
     """抽取客户名称关键词（CRM 模糊匹配输入，PRD 6.1.1）。
 
