@@ -40,6 +40,12 @@
         "title": "事由",
         "description": "请假事由（必填：Agent 必须追问，不提供默认值）"
       },
+      "tx_reason": {
+        "type": "integer",
+        "enum": [0, 1, 2],
+        "title": "调休时长来源",
+        "description": "0=加班/1=旅游/2=其他；仅调休流程使用，用户在对话中明确说明来源时传入，缺省服务端默认（加班）"
+      },
       "idempotency_key": {
         "type": "string",
         "title": "幂等键",

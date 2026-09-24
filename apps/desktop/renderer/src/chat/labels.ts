@@ -5,6 +5,7 @@ export const FIELD_LABELS: Record<string, string> = {
   end_time: '结束时间',
   duration_days: '时长（天）',
   reason: '事由',
+  tx_reason: '调休时长来源',
   balance_days: '可用余额（天）',
   user_id: '工号',
   doc_no: '单据号',
@@ -91,6 +92,13 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
   maternity: '产假'
 }
 
+/** 调休时长来源（E9 TXReason 下拉，对齐 agent_core rules.TX_REASON_LABELS） */
+export const TX_REASON_LABELS: Record<number, string> = {
+  0: '加班',
+  1: '旅游',
+  2: '其他'
+}
+
 export const SOURCE_LABELS: Record<string, string> = {
   default: '默认',
   memory: '记忆',
@@ -143,7 +151,7 @@ export const ACTION_LABELS: Record<string, string> = {
 }
 
 /** 技术性字段不进入卡片展示（幂等键 / 后端附带的类型中文名 / 卡片类型标识） */
-export const HIDDEN_FIELDS = new Set(['idempotency_key', 'leave_type_label', 'type'])
+export const HIDDEN_FIELDS = new Set(['idempotency_key', 'leave_type_label', 'tx_reason_label', 'type'])
 
 export function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key
@@ -156,6 +164,9 @@ export function fieldValueText(key: string, value: unknown): string {
   }
   if (key === 'leave_type' && typeof value === 'string') {
     return LEAVE_TYPE_LABELS[value] ?? value
+  }
+  if (key === 'tx_reason' && typeof value === 'number') {
+    return TX_REASON_LABELS[value] ?? String(value)
   }
   if (key === 'order_type' && typeof value === 'string') {
     return ORDER_TYPE_LABELS[value] ?? value

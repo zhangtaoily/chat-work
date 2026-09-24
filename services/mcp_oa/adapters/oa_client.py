@@ -51,6 +51,7 @@ class OaAdapter(Protocol):
         end_time: datetime,
         duration_days: float,
         reason: str,
+        tx_reason: int | None = None,  # 调休时长来源：0=加班/1=旅游/2=其他（E9 调休流程）
     ) -> dict[str, Any]: ...
 
     async def list_pending_approvals(
@@ -132,6 +133,7 @@ class MockOaAdapter:
         end_time: datetime,
         duration_days: float,
         reason: str,
+        tx_reason: int | None = None,  # 仅 E9 调休流程消费；mock 忽略
     ) -> dict[str, Any]:
         # 走「官方认可路径」：调 OA 提交接口（mock 即内存记账）
         balances = self._user_balances(user_id)
@@ -309,11 +311,24 @@ _adapter: OaAdapter | None = None
 def get_adapter() -> OaAdapter:
     """按 OA_MODE 选择适配器（默认 mock，开发期零外部依赖）。
 
+    - mock（默认）：进程内假数据
+    - http：真实 OA OpenAPI（HttpOaAdapter）
+    - e9：泛微 E-cology 9（E9OaAdapter，请假创建走 doCreateRequest，
+      读路径 NotImplementedError 由上层降级）
+
     模块级单例：leave/approvals 等工具模块必须共享同一 adapter，
     否则 mock 内存态（提交的请假单、审批状态）跨工具不可见。
     """
     global _adapter
     if _adapter is None:
         mode = os.environ.get("OA_MODE", "mock")
-        _adapter = HttpOaAdapter() if mode == "http" else MockOaAdapter()
+        if mode == "http":
+            _adapter = HttpOaAdapter()
+        elif mode == "e9":
+            # 局部导入：mock/http 模式不加载 E9 配置校验逻辑
+            from adapters.e9_client import E9OaAdapter
+
+            _adapter = E9OaAdapter()
+        else:
+            _adapter = MockOaAdapter()
     return _adapter

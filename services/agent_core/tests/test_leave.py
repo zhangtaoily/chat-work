@@ -245,6 +245,75 @@ async def test_balance_note_without_duration() -> None:
         )
     assert final["draft"]["balance_days"]["value"] == 5
     assert final["final"]["text"] == (
-        "查到你的年假余额为 5 天。\n请问开始时间？（如 2026-09-21 09:00）"
+        "查到你的年假余额为 5 天。\n请问开始时间？（口语日期即可，如 10月5号 或 2026-10-05）"
     )
     assert final.get("confirm_token") is None
+
+
+async def test_colloquial_single_day_leave() -> None:
+    """口语单日请假：「我10月5号请假，家里有事」→ 自动推理起止（冬令时整天）、
+    时长、事由，仅补问假种；一轮补答后进确认与工具入参。"""
+    session = "s-leave-colloquial"
+    with patch("agent_core.pipeline.graph.call_oa_tool", side_effect=_mock_call_oa_tool), patch(
+        "agent_core.pipeline.rules._today", return_value=date(2026, 9, 24)
+    ):
+        graph = build_graph().compile()
+        first = await graph.ainvoke(
+            {"user_id": _USER, "session_id": session, "message": "我10月5号请假，家里有事"}
+        )
+    draft = first["draft"]
+    # 单日推理（冬令时 8:30-16:30）+ 无引导词事由兜底
+    assert draft["start_time"]["value"] == "2026-10-05T08:30:00"
+    assert draft["end_time"]["value"] == "2026-10-05T16:30:00"
+    assert draft["duration_days"] == {"value": 1.0, "source": "computed"}
+    assert draft["reason"]["value"] == "家里有事"
+    assert "leave_type" not in draft
+    assert first.get("confirm_token") is None
+    assert "请问要请哪种假" in first["final"]["text"]
+
+    with patch("agent_core.pipeline.graph.call_oa_tool", side_effect=_mock_call_oa_tool):
+        second = await graph.ainvoke(
+            {"user_id": _USER, "session_id": session, "message": "调休"}
+        )
+    # 调休（comp）条件必填 tx_reason → 追问时长来源
+    assert second.get("confirm_token") is None
+    assert "调休时长来源" in second["final"]["text"]
+
+    with patch("agent_core.pipeline.graph.call_oa_tool", side_effect=_mock_call_oa_tool):
+        third = await graph.ainvoke(
+            {"user_id": _USER, "session_id": session, "message": "加班"}
+        )
+    assert third["confirm_token"] is not None
+    args = third["tool_call"]["arguments"]
+    assert args["start_time"] == "2026-10-05T08:30:00"
+    assert args["duration_days"] == 1.0
+    assert args["tx_reason"] == 0  # 裸选项词「加班」补答映射
+
+
+async def test_comp_leave_tx_reason_from_message() -> None:
+    """调休时长来源对话指定：「来源是加班」→ 草稿/确认卡/工具入参透传 tx_reason。"""
+    start, end = _next_workdays(2)
+    session = "s-leave-tx-reason"
+    with patch("agent_core.pipeline.graph.call_oa_tool", side_effect=_mock_call_oa_tool):
+        graph = build_graph().compile()
+        first = await graph.ainvoke(
+            {
+                "user_id": _USER,
+                "session_id": session,
+                "message": f"我要调休 {start.isoformat()} 到 {end.isoformat()}，来源是加班",
+            }
+        )
+    assert first["draft"]["tx_reason"] == {"value": 0, "source": "ask"}
+    assert first.get("confirm_token") is None  # 缺事由 → 补问轮
+
+    with patch("agent_core.pipeline.graph.call_oa_tool", side_effect=_mock_call_oa_tool):
+        second = await graph.ainvoke(
+            {"user_id": _USER, "session_id": session, "message": "事由：项目上线调休"}
+        )
+    # 确认卡：tx_reason 原值 + 中文标签
+    confirms = _events_of(second, "confirm_card")
+    assert len(confirms) == 1
+    assert confirms[0]["payload"]["fields"]["tx_reason"] == 0
+    assert confirms[0]["payload"]["fields"]["tx_reason_label"] == "加班"
+    # 工具入参透传（契约 oa__submit_leave_request.json tx_reason）
+    assert second["tool_call"]["arguments"]["tx_reason"] == 0

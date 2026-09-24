@@ -14,9 +14,23 @@ MVP 工具目录（PRD 6.1 / ARCHITECTURE v1.8）：
 - tools/expense.py / tools/purchase.py  Phase 2（PRD 6.1.2），不实现
 """
 
+import logging
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+
+# 服务级配置（OA_MODE=e9 / E9_* 等），启动目录无关，固定读本目录 .env
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+# 全链路诊断日志（e9_client / tools 经 root logger 输出到 stderr）：
+# 请求/响应/4xx-5xx 响应体全记录，E9 5xx 排查不再盲人摸象
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("mcp_oa")
 
 from adapters.oa_client import get_adapter
 from tools.activity import register as register_activity
@@ -41,6 +55,13 @@ register_activity(mcp)
 
 def main() -> None:
     """启动服务：Streamable HTTP（/mcp 端点，MVP 降级 SSE 由客户端协商）。"""
+    logger.info(
+        "mcp-oa 启动：pid=%s OA_MODE=%s 监听 http://%s:%s/mcp",
+        os.getpid(),
+        os.environ.get("OA_MODE", "mock"),
+        os.environ.get("MCP_OA_HOST", "127.0.0.1"),
+        os.environ.get("MCP_OA_PORT", "8001"),
+    )
     mcp.run(transport="streamable-http")
 
 

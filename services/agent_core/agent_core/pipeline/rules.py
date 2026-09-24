@@ -9,16 +9,47 @@ P2.2 科室扩展（PRD 6.2）：五科室工作台只读视图的渲染辅助
 （备料齐套/到货计划/效期批次/仓库概览/数据巡检）。
 """
 
+import os
 import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
-# 标准工作日半天槽边界（OA 请假 0.5 天粒度口径，PRD 5.2）
-_AM_START = time(9, 0)
-_AM_END = time(12, 0)
-_PM_START = time(13, 0)
-_PM_END = time(18, 0)
+# 公司作息（2026-09 用户确认口径）：冬令时 10-01~次年 04-30 上班 8:30-16:30，
+# 夏令时 05-01~09-30 上班 8:00-17:00；午休 11:00-12:00。
+# env WORK_TIME_WINTER / WORK_TIME_SUMMER / WORK_LUNCH（"HH:MM-HH:MM"）可覆盖。
+_WINTER_HOURS = (time(8, 30), time(16, 30))
+_SUMMER_HOURS = (time(8, 0), time(17, 0))
+_LUNCH_HOURS = (time(11, 0), time(12, 0))
+
+
+def _hhmm(raw: str) -> time:
+    h, m = raw.strip().split(":", 1)
+    return time(int(h), int(m))
+
+
+def _env_range(key: str, fallback: tuple[time, time]) -> tuple[time, time]:
+    raw = os.environ.get(key)
+    if raw and "-" in raw:
+        try:
+            a, b = raw.split("-", 1)
+            return _hhmm(a), _hhmm(b)
+        except (ValueError, IndexError):
+            pass  # 配置非法回退默认
+    return fallback
+
+
+def work_schedule(day: date) -> tuple[time, time, time, time]:
+    """作息时间（上班/午休起/午休止/下班）：冬令时 10-01~04-30 8:30-16:30、
+    夏令时 05-01~09-30 8:00-17:00、午休 11:00-12:00；env 可覆盖（见模块头）。"""
+    winter = day.month >= 10 or day.month <= 4
+    lo, hi = _env_range(
+        "WORK_TIME_WINTER" if winter else "WORK_TIME_SUMMER",
+        _WINTER_HOURS if winter else _SUMMER_HOURS,
+    )
+    lunch = _env_range("WORK_LUNCH", _LUNCH_HOURS)
+    return lo, lunch[0], lunch[1], hi
+
 
 # 假期类型中文关键词 → 协议枚举（与 oa__*.json 枚举对齐，CI 校验）
 LEAVE_TYPE_KEYWORDS: dict[str, str] = {
@@ -44,8 +75,27 @@ LEAVE_TYPE_LABELS: dict[str, str] = {
 _WEEKDAY_CN = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6}
 
 _ISO_DATETIME = re.compile(r"\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?")
+# 口语日期（「10月5号 / 2027年3月1日」）；号/日 后缀必填，避免误吞「4月30」类尾数
+_MD_DATE = re.compile(r"(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[号日]")
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)\s*天")
 _REASON = re.compile(r"(?:事由|原因|因为)[：:\s]*(.+?)(?:[。；;]|$)")
+# 调休时长来源（E9 TXReason 下拉，加班=0/旅游=1/其他=2）：需「来源」引导词
+# 触发，无引导词不误伤（如「用调休抵掉上周的加班」）
+_TX_REASON = re.compile(r"来源(?:是|为)?[：:]?\s*(加班|旅游|其他)")
+TX_REASON_KEYWORDS: dict[str, int] = {"加班": 0, "旅游": 1, "其他": 2}
+TX_REASON_LABELS: dict[int, str] = {v: k for k, v in TX_REASON_KEYWORDS.items()}
+# 补答轮裸选项词（问「调休时长来源」答「加班」无引导词）；默认/随便/都行 → 加班 0（E9 默认口径）
+_TX_BARE = re.compile(r"^(?:来源[是为]?[：:]?\s*)?(加班|旅游|其他|默认|随便|都行)[。.!！？?\s]*$")
+# 无引导词事由兜底（「我10月5号请假，家里有事」→ 家里有事）：噪声词剥离
+_REASON_NOISE = re.compile(
+    r"\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?"
+    r"|\d{1,2}月\d{1,2}[号日]"
+    r"|今天|明天|后天|下周[一二三四五六日]|上午|早上|下午|半天"
+    r"|\d+(?:\.\d+)?\s*天"
+    r"|来源(?:是|为)?[：:]?\s*(?:加班|旅游|其他)"
+    r"|请假|年假|调休|病假|事假|婚假|丧假|产假"
+)
+_REASON_PREFIXES = ("我要", "我想", "帮我", "申请", "我", "请", "想", "要", "从", "到", "至", "开始", "结束")
 
 # 行内审批（PRD 5.2 场景 2）：动作词 + 目标（"第 N 条" / 单号直达 / "这条"承接上轮）
 # 注意顺序："不同意"包含"同意"子串，须先判驳回词组
@@ -126,23 +176,75 @@ def _parse_cn_dates(message: str) -> list[str]:
     return out
 
 
+def _parse_md_dates(message: str) -> list[str]:
+    """口语月日（「10月5号 / 2027年3月1日」）→ ISO 日期串。
+
+    分句扫描、只取首个含日期的子句（避免同文其他日期串扰起止推理，
+    如作息说明「10月1号到次年4月30」）；缺省年份取当年，已过则顺延次年。
+    """
+    today = _today()
+    for clause in re.split(r"[。；;！!？?]", message):
+        out: list[str] = []
+        for m in _MD_DATE.finditer(clause):
+            yy, mm, dd = m.group(1), int(m.group(2)), int(m.group(3))
+            try:
+                d = date(int(yy), mm, dd) if yy else date(today.year, mm, dd)
+            except ValueError:
+                continue  # 非法日期（如 2月30号）跳过
+            if not yy and d < today:
+                d = date(today.year + 1, mm, dd)
+            out.append(d.isoformat())
+        if out:
+            return out
+    return []
+
+
 def extract_times(message: str) -> list[str]:
-    """抽取起止时间（ISO 优先，回退中文相对日期）。"""
+    """抽取起止时间（ISO 优先，口语月日次之，回退中文相对日期）。"""
     iso = _ISO_DATETIME.findall(message)
     if iso:
         return iso
+    md = _parse_md_dates(message)
+    if md:
+        return md
     return _parse_cn_dates(message)
 
 
 def normalize_time(value: str, end: bool = False) -> str:
-    """时间规格化为 ISO 8601 datetime（缺省时刻：开始 09:00 / 结束 18:00）。"""
+    """时间规格化为 ISO 8601 datetime；缺省时刻按当日作息
+    （开始=上班时刻、结束=下班时刻，冬夏令时不同）。"""
     v = value.replace("T", " ").strip()
-    default = "18:00:00" if end else "09:00:00"
+    try:
+        day = date.fromisoformat(v[:10])
+    except ValueError:
+        day = _today()
+    ws, _, _, we = work_schedule(day)
+    default = we.isoformat() if end else ws.isoformat()
     if len(v) == 10:  # 仅日期
         v = f"{v} {default}"
     elif len(v) == 16:  # 日期 + HH:MM
         v = f"{v}:00"
     return datetime.fromisoformat(v).isoformat()
+
+
+def _single_day_range(token: str, message: str) -> tuple[str, str] | None:
+    """单日口语推理：「10月5号请假」→ 整天（上班~下班时刻）；
+    「上午/下午」→ 对应半天槽。「半天」未指明上/下午时不猜（返回 None 走补问）。"""
+    day = token[:10]
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        return None
+    if "半天" in message and not any(k in message for k in ("上午", "早上", "下午")):
+        return None
+    ws, lunch_start, lunch_end, we = work_schedule(d)
+    if "上午" in message or "早上" in message:
+        lo, hi = ws, lunch_start
+    elif "下午" in message:
+        lo, hi = lunch_end, we
+    else:
+        lo, hi = ws, we
+    return f"{day}T{lo.isoformat()}", f"{day}T{hi.isoformat()}"
 
 
 def extract_duration(message: str) -> float | None:
@@ -159,12 +261,40 @@ def extract_reason(message: str) -> str | None:
     return None
 
 
+def extract_tx_reason(message: str) -> int | None:
+    """抽取调休时长来源选项值（E9 TXReason 下拉：加班=0/旅游=1/其他=2）。"""
+    m = _TX_REASON.search(message)
+    return TX_REASON_KEYWORDS[m.group(1)] if m else None
+
+
+def extract_reason_loose(message: str) -> str | None:
+    """无引导词事由兜底：「我10月5号请假，家里有事」→「家里有事」。
+
+    首子句剥离日期/时长/假种/来源等噪声词后，剩余 2~40 字短句视为事由；
+    剥离后为空或过长返回 None（不误伤改期等操作句——调用方另守「改」字）。
+    """
+    clause = re.split(r"[。；;！!？?]", message)[0]
+    text = _REASON_NOISE.sub(" ", clause)
+    text = re.sub(r"[\s，,、；;：:（）()]+", " ", text).strip(" .。！!？?\t")
+    changed = True
+    while changed and text:
+        changed = False
+        for p in _REASON_PREFIXES:
+            if text.startswith(p):
+                text = text[len(p):].lstrip(" .，,、\t")
+                changed = True
+    text = text.strip(" .。！!？?\t")
+    if 2 <= len(text) <= 40:
+        return text
+    return None
+
+
 def calculate_workdays(start_time: str, end_time: str) -> float:
     """按起止时间计算工作日时长（0.5 天粒度，PRD 5.2）。
 
-    口径：标准工作日分上午（09:00-12:00）/ 下午（13:00-18:00）两个半天槽，
-    请假区间 [start, end] 与任一半天槽有交集即计入该槽 0.5 天；周末不计。
-    整天输入（09:00 起 / 18:00 止）结果与整天口径一致，向下兼容。
+    口径：每个工作日按作息分上午（上班~午休）/ 下午（午休止~下班）两个
+    半天槽（冬夏令时不同），请假区间 [start, end] 与任一半天槽有交集即
+    计入该槽 0.5 天；周末不计。
     """
     start = datetime.fromisoformat(start_time)
     end = datetime.fromisoformat(end_time)
@@ -174,11 +304,11 @@ def calculate_workdays(start_time: str, end_time: str) -> float:
     cur = start.date()
     while cur <= end.date():
         if cur.weekday() < 5:  # 排除周末
-            day = cur
-            am_start = datetime.combine(day, _AM_START)
-            am_end = datetime.combine(day, _AM_END)
-            pm_start = datetime.combine(day, _PM_START)
-            pm_end = datetime.combine(day, _PM_END)
+            ws, lunch_start, lunch_end, we = work_schedule(cur)
+            am_start = datetime.combine(cur, ws)
+            am_end = datetime.combine(cur, lunch_start)
+            pm_start = datetime.combine(cur, lunch_end)
+            pm_end = datetime.combine(cur, we)
             if start < am_end and end > am_start:
                 days += 0.5
             if start < pm_end and end > pm_start:
@@ -188,22 +318,39 @@ def calculate_workdays(start_time: str, end_time: str) -> float:
 
 
 def extract_leave_fields(message: str) -> dict[str, Any]:
-    """从消息抽取请假草稿字段（来源标记 ask/computed，见 draft_card 事件）。"""
+    """从消息抽取请假草稿字段（来源标记 ask/computed，见 draft_card 事件）。
+
+    单日口语推理：仅一个日期且非「结束」语境时按作息推整天/半天起止
+    （「我10月5号请假」→ 10-05 上班~下班）；无引导词事由兜底
+    （「我10月5号请假，家里有事」→ 事由=家里有事，改期类消息除外）。
+    """
     draft: dict[str, Any] = {}
     leave_type = extract_leave_type(message)
     if leave_type:
         draft["leave_type"] = {"value": leave_type, "source": "ask"}
     times = extract_times(message)
-    if len(times) >= 1:
-        draft["start_time"] = {"value": normalize_time(times[0]), "source": "ask"}
     if len(times) >= 2:
+        draft["start_time"] = {"value": normalize_time(times[0]), "source": "ask"}
         draft["end_time"] = {"value": normalize_time(times[1], end=True), "source": "ask"}
+    elif len(times) == 1:
+        if "结束" not in message:
+            rng = _single_day_range(times[0], message)
+            if rng:
+                draft["start_time"] = {"value": rng[0], "source": "ask"}
+                draft["end_time"] = {"value": rng[1], "source": "ask"}
+        if "start_time" not in draft:
+            draft["start_time"] = {"value": normalize_time(times[0]), "source": "ask"}
     duration = extract_duration(message)
     if duration is not None:
         draft["duration_days"] = {"value": duration, "source": "ask"}
     reason = extract_reason(message)
+    if not reason and (leave_type or "请假" in message) and "改" not in message:
+        reason = extract_reason_loose(message)
     if reason:
         draft["reason"] = {"value": reason, "source": "ask"}
+    tx_reason = extract_tx_reason(message)
+    if tx_reason is not None:
+        draft["tx_reason"] = {"value": tx_reason, "source": "ask"}
     return draft
 
 
@@ -227,12 +374,30 @@ def merge_leave_draft(message: str, pending: dict[str, Any] | None) -> dict[str,
         if "结束" in message or pending and "start_time" in pending and "end_time" not in pending:
             new["end_time"] = value
         else:
-            new["start_time"] = value
+            # 单日口语推理（补答轮同口径）：整天/上下午半天
+            rng = _single_day_range(times[0], message)
+            if rng:
+                new["start_time"] = {"value": rng[0], "source": "ask"}
+                new["end_time"] = {"value": rng[1], "source": "ask"}
+            else:
+                new["start_time"] = value
     draft.update(new)
     # 补答整句视为事由：收集轮中本条消息未提取到其他字段且事由缺失时，
     # 将整句回复作为事由（如问"请假事由是什么"答"家里有事需要回去处理"）
     if pending and "reason" not in draft and not new and not times and message.strip():
         draft["reason"] = {"value": message.strip(), "source": "ask"}
+    # 调休补答：事由已齐、草稿为调休且缺时长来源时，裸选项词直接映射
+    # （问「调休时长来源」答「加班」无引导词，extract_tx_reason 不触发，防追问循环）
+    if (
+        pending
+        and "reason" in draft
+        and draft.get("leave_type", {}).get("value") == "comp"
+        and "tx_reason" not in draft
+    ):
+        bare = _TX_BARE.match(message.strip())
+        if bare:
+            word = bare.group(1)
+            draft["tx_reason"] = {"value": TX_REASON_KEYWORDS.get(word, 0), "source": "ask"}
     return draft
 
 

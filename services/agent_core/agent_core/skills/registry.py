@@ -67,12 +67,15 @@ SKILLS: dict[str, dict[str, Any]] = {
         # 缺失必填字段的追问文案（事由必问无默认，PRD 5.2）
         "ask_messages": {
             "leave_type": "请问要请哪种假？（年假/调休/病假/事假/婚假/丧假/产假）",
-            "start_time": "请问开始时间？（如 2026-09-21 09:00）",
-            "end_time": "请问结束时间？（如 2026-09-22 18:00）",
+            "start_time": "请问开始时间？（口语日期即可，如 10月5号 或 2026-10-05）",
+            "end_time": "请问结束时间？（如 10月6号 或 2026-10-06 16:30）",
             "duration_days": "请问请假时长？（0.5 天粒度，如 2 或 1.5）",
             "reason": "请问请假事由是什么？",
+            "tx_reason": "调休时长来源是？（加班/旅游/其他）",
         },
         "required_fields": ["leave_type", "start_time", "end_time", "duration_days", "reason"],
+        # 条件必填：调休（comp）需 E9 TXReason 下拉（加班=0/旅游=1/其他=2）
+        "required_fields_by_type": {"comp": ["tx_reason"]},
         # 知识绑定（P2.5，PRD 9.5.3 注入点2）：缺字段补问时检索「请假」标签
         # 知识文档，注入填写说明/制度提示（process hint）
         "knowledge_tags": ["请假"],

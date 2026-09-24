@@ -68,6 +68,17 @@ _STAGE_MESSAGES = {
 }
 
 _LEAVE_TYPE_LABELS = rules.LEAVE_TYPE_LABELS
+_TX_REASON_LABELS = rules.TX_REASON_LABELS
+
+
+def _required_fields(skill: dict, draft: dict) -> list[str]:
+    """必填字段 + 按草稿假期类型的条件必填（registry required_fields_by_type，
+    如调休 comp → tx_reason 调休时长来源，E9 TXReason 下拉）。"""
+    fields = list(skill.get("required_fields") or [])
+    extra = (skill.get("required_fields_by_type") or {}).get(
+        (draft.get("leave_type") or {}).get("value"), ()
+    )
+    return fields + [f for f in extra if f not in fields]
 
 
 class ChatState(TypedDict, total=False):
@@ -222,7 +233,7 @@ async def extract_node(state: ChatState) -> dict[str, Any]:
     tags = (skill or {}).get("knowledge_tags")
     if skill and tags and skill.get("required_fields"):
         draft = result.get("draft") or {}
-        missing = [f for f in skill["required_fields"] if f not in draft]
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
         if missing:
             # 查询重写为技能标题短语（同注入点4）：tags 限定领域 + title 语义锚，
             # 避免消息中的日期等参数 token 稀释相似度（PRD 9.5.3 查询改写规则化）
@@ -255,7 +266,7 @@ async def _llm_fill_missing(
     if not skill or not skill.get("required_fields") or not llm.enabled(state.get("user_id", "")):
         return result
     draft = dict(result.get("draft") or {})
-    missing = [f for f in skill["required_fields"] if f not in draft]
+    missing = [f for f in _required_fields(skill, draft) if f not in draft]
     if not missing:
         return result
     intent = state.get("intent") or {}
@@ -278,7 +289,7 @@ async def _llm_fill_missing(
     )
     pending = await slots.get_pending(state["user_id"], state["session_id"])
     if pending and pending["skill_name"] == skill["name"]:
-        still_missing = [f for f in skill["required_fields"] if f not in draft]
+        still_missing = [f for f in _required_fields(skill, draft) if f not in draft]
         await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
         events.append(
             {
@@ -342,7 +353,7 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
                         "message": "余额查询暂不可用，将跳过余额校验",
                     }
                 )
-        missing = [f for f in skill["required_fields"] if f not in draft]
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
         # 挂起合并草稿：补问/校验失败/取消后下一轮继续改参；成功提交后清除
         await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
         events.append(
@@ -503,7 +514,7 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
         content = rules.extract_reminder_content(state.get("message", ""))
         if content:
             draft["content"] = {"value": content, "source": "ask"}
-        missing = [f for f in skill["required_fields"] if f not in draft]
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
         await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
         events.append(
             {
@@ -596,7 +607,7 @@ async def _approval_draft(state: ChatState, action: str, target: str) -> dict[st
 
 def _validate_leave(draft: dict[str, Any], skill: dict[str, Any]) -> dict[str, Any]:
     """请假草稿校验（对齐 oa__submit_leave_request.json required + 业务规则）。"""
-    missing = [f for f in skill["required_fields"] if f not in draft]
+    missing = [f for f in _required_fields(skill, draft) if f not in draft]
     errors: list[str] = []
     if not missing:
         leave_type = draft["leave_type"]["value"]
@@ -717,7 +728,7 @@ async def _crm_order_extract(
     draft.setdefault("order_type", {"value": "standard", "source": "default"})
     draft.setdefault("delivery_date", {"value": rules.default_delivery_date(), "source": "default"})
 
-    missing = [f for f in skill["required_fields"] if f not in draft]
+    missing = [f for f in _required_fields(skill, draft) if f not in draft]
     await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
     events.append(
         {"type": "draft_card", "draft": draft, "missing_fields": missing, "draft_version": 1}
@@ -749,7 +760,7 @@ def _crm_ask_text(field: str, draft: dict[str, Any]) -> str:
 
 def _validate_crm_order(draft: dict[str, Any], skill: dict[str, Any]) -> dict[str, Any]:
     """CRM 订单草稿校验（PRD 6.1.1）：必填 + 明细完整 + 联系人在册。"""
-    missing = [f for f in skill["required_fields"] if f not in draft]
+    missing = [f for f in _required_fields(skill, draft) if f not in draft]
     errors: list[str] = []
     if not missing:
         items = draft["items"]["value"] or []
@@ -786,7 +797,7 @@ async def validate_node(state: ChatState) -> dict[str, Any]:
     # 自动化任务/定时提醒：仅必填缺失校验（时刻过期等防线在 store 层）
     if skill["name"] == "automation_task_create":
         draft = state.get("draft") or {}
-        missing = [f for f in skill["required_fields"] if f not in draft]
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
         return {
             "validation": {"missing_fields": missing, "errors": [], "passed": not missing},
             "events": events,
@@ -795,7 +806,7 @@ async def validate_node(state: ChatState) -> dict[str, Any]:
     # workflow 步骤执行与 MCP 契约校验兜底）
     if skill["name"] == "cross_system_order_flow":
         draft = state.get("draft") or {}
-        missing = [f for f in skill["required_fields"] if f not in draft]
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
         return {
             "validation": {"missing_fields": missing, "errors": [], "passed": not missing},
             "events": events,
@@ -1028,7 +1039,7 @@ def _tool_arguments(state: Mapping[str, Any], idempotency_key: str) -> dict[str,
         }
     args = {
         f: draft[f]["value"]
-        for f in ("leave_type", "start_time", "end_time", "duration_days", "reason")
+        for f in ("leave_type", "start_time", "end_time", "duration_days", "reason", "tx_reason")
         if f in draft
     }
     args["user_id"] = state.get("user_id")
@@ -1061,6 +1072,10 @@ def _confirm_payload(state: Mapping[str, Any]) -> dict[str, Any]:
     if "leave_type" in fields:
         fields["leave_type_label"] = _LEAVE_TYPE_LABELS.get(
             fields["leave_type"], fields["leave_type"]
+        )
+    if "tx_reason" in fields:  # 调休时长来源中文标签（0=加班/1=旅游/2=其他）
+        fields["tx_reason_label"] = _TX_REASON_LABELS.get(
+            fields["tx_reason"], fields["tx_reason"]
         )
     return {"skill_title": skill.get("title", ""), "fields": fields}
 

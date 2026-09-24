@@ -95,6 +95,13 @@ def _tool_schema() -> dict[str, Any]:
                                 "type": "string",
                                 "description": "提醒或任务的正文",
                             },
+                            "tx_reason": {
+                                "type": "integer",
+                                "description": (
+                                    "调休时长来源（0=加班/1=旅游/2=其他）；"
+                                    "仅用户明确说明来源时填写"
+                                ),
+                            },
                         },
                         "additionalProperties": True,
                     },
