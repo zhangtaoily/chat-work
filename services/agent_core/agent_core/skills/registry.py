@@ -452,7 +452,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "rw": "read",
         "mode": "ask",
         "dept_scope": None,
-        "intent_patterns": ["自动化任务", "定时任务", "定时提醒", "提醒我"],
+        "intent_patterns": ["自动化任务", "自动任务", "定时任务", "定时提醒", "提醒我"],
         "read_tools": [],
         "write_tool": None,
         "required_roles": [],

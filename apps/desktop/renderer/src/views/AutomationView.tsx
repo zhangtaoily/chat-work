@@ -51,8 +51,13 @@ function statusTag(status: string) {
   return status === 'active' ? <Tag color="green">运行中</Tag> : <Tag color="orange">已暂停</Tag>
 }
 
-export default function AutomationView() {
-  const [tab, setTab] = useState<'tasks' | 'inbox'>('tasks')
+// tab 状态由 App 提升（受控）：通知点击跳转信箱需要外部切换
+interface AutomationViewProps {
+  tab: 'tasks' | 'inbox'
+  onTabChange: (tab: 'tasks' | 'inbox') => void
+}
+
+export default function AutomationView({ tab, onTabChange }: AutomationViewProps) {
   const [tasks, setTasks] = useState<AutomationTask[]>([])
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -316,7 +321,7 @@ export default function AutomationView() {
     <div style={{ padding: 24, maxWidth: 960, margin: '0 auto', width: '100%' }}>
       <Tabs
         activeKey={tab}
-        onChange={(key) => setTab(key as 'tasks' | 'inbox')}
+        onChange={(key) => onTabChange(key as 'tasks' | 'inbox')}
         items={[
           { key: 'tasks', label: '我的任务', children: tasksPane },
           { key: 'inbox', label: '结果信箱', children: inboxPane }

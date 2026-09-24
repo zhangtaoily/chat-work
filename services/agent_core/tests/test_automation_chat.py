@@ -17,6 +17,7 @@ from agent_core.automation import store as auto_store
 from agent_core.pipeline import rules
 from agent_core.pipeline.graph import build_graph
 from agent_core.skills import store as skill_store
+from agent_core.skills.registry import match_skill
 
 _USER = "E2001"
 
@@ -63,6 +64,14 @@ def test_reminder_content_phrases() -> None:
     assert rules.extract_reminder_content("明天上午9点半") is None
 
 
+def test_reminder_short_keyword_variant() -> None:
+    """「自动任务」（少「化」字）变体：路由与正文抽取均命中（线上反馈回归）。"""
+    msg = "建一个自动任务，今天下午5点，有个吃饭的活动"
+    skill = match_skill(msg)
+    assert skill is not None and skill["name"] == "automation_task_create"
+    assert rules.extract_reminder_content(msg) == "今天下午5点，有个吃饭的活动"
+
+
 # ---- 图层：对话直建定时提醒 ----
 
 
@@ -86,6 +95,25 @@ async def test_chat_creates_once_reminder() -> None:
     tomorrow = (datetime.now().astimezone() + timedelta(days=1)).date().isoformat()
     assert task["schedule"]["at"] == f"{tomorrow}T17:00:00"
     assert task["params"]["content"]["value"] == "晚上联络活动"
+
+
+async def test_chat_creates_once_reminder_short_keyword() -> None:
+    """端到端：「自动任务」说法直接创建（此前落到闲聊兜底的线上回归）。"""
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {
+            "user_id": _USER,
+            "session_id": "s-auto-create-short",
+            "message": "建一个自动任务，明天上午9点，有个吃饭的活动",
+        }
+    )
+    text = result["final"]["text"]
+    assert "已创建定时提醒" in text and "有个吃饭的活动" in text
+    tasks = auto_store.list_tasks(owner=_USER)
+    assert len(tasks) == 1
+    tomorrow = (datetime.now().astimezone() + timedelta(days=1)).date().isoformat()
+    assert tasks[0]["schedule"]["at"] == f"{tomorrow}T09:00:00"
+    assert tasks[0]["params"]["content"]["value"] == "明天上午9点，有个吃饭的活动"
 
 
 async def test_chat_reask_missing_time() -> None:

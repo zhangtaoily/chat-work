@@ -238,3 +238,6 @@ apps/desktop/out/
 
 # 测试覆盖率
 coverage/
+
+# agent_core 本地快照兜底（data/snapshots/：无 Redis 时的任务/配置/知识库落盘）
+services/agent_core/data/

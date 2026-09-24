@@ -77,18 +77,73 @@
 {% endif %}
 
 <div class="card">
-  <h3>模型路由 <span class="muted">（只读，改配置走环境变量并重启）</span></h3>
+  <h3>LLM 模型管理 <span class="muted">（多模型可视化配置，员工可在桌面端自选）</span></h3>
+  <form method="post" action="/admin/syscfg/model/probe" style="margin-bottom:8px;">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button class="pri">全部探活</button>
+    <span class="muted">GET {base_url}/models，超时 5s，结果回显在下方</span>
+  </form>
   <table>
-    <tr><th>通道</th><th>base_url</th><th>model</th><th>api_key</th></tr>
-    {% for k in ['llm', 'embedding'] %}
+    <tr><th>模型</th><th>base_url</th><th>model</th><th>api_key</th><th>状态</th><th>操作</th></tr>
+    {% for m in models_data.models %}
     <tr>
-      <td>{{ {'llm': 'LLM 对话', 'embedding': 'Embedding 向量'}[k] }}</td>
-      <td><code>{{ model_route[k].base_url or '-' }}</code></td>
-      <td><code>{{ model_route[k].model }}</code></td>
-      <td class="muted">{{ model_route[k].api_key }}</td>
+      <td><code>{{ m.name }}</code>{% if m.name == models_data.default %} <span class="tag ok">默认</span>{% endif %}</td>
+      <td><code>{{ m.base_url }}</code></td>
+      <td><code>{{ m.model }}</code></td>
+      <td class="muted">{{ m.api_key_masked }}</td>
+      <td>{% if m.enabled %}<span class="tag ok">启用</span>{% else %}<span class="tag bad">停用</span>{% endif %}</td>
+      <td>
+        <form class="inline" method="post" action="/admin/syscfg/model/default">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="hidden" name="name" value="{{ m.name }}">
+          <button class="pri" {% if m.name == models_data.default or not m.enabled %}disabled{% endif %}>设为默认</button>
+        </form>
+        <form class="inline" method="post" action="/admin/syscfg/model/toggle">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="hidden" name="name" value="{{ m.name }}">
+          {% if m.enabled %}
+          <button name="value" value="false" class="danger">停用</button>
+          {% else %}
+          <button name="value" value="true" class="pri">启用</button>
+          {% endif %}
+        </form>
+        <form class="inline" method="post" action="/admin/syscfg/model/delete">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="hidden" name="name" value="{{ m.name }}">
+          <button class="danger">删除</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">尚未注册模型——员工对话走环境变量 LLM_BASE_URL（{{ '当前已配置 ' ~ models_data.env_fallback.base_url if models_data.env_fallback.configured else '当前未配置，LLM 通道关闭（纯规则）' }}）</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/admin/syscfg/model" style="margin-top:8px;">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input type="text" name="name" placeholder="模型名（小写字母开头）" required pattern="[a-z][a-z0-9_-]{0,31}">
+    <input type="text" name="model" placeholder="model 名（如 qwen2.5-32b-instruct）" size="26" required>
+    <input type="text" name="base_url" placeholder="http(s):// OpenAI 兼容地址" size="32" required>
+    <input type="password" name="api_key" placeholder="api_key（可空=免密）" size="20" autocomplete="new-password">
+    <button class="pri">注册 / 更新</button>
+  </form>
+  <p class="muted">{{ models_data.note }}</p>
+</div>
+
+{% if model_probe_results %}
+<div class="card">
+  <h3>最近模型探活结果</h3>
+  <table>
+    <tr><th>模型</th><th>健康</th><th>HTTP</th><th>时延</th><th>错误</th></tr>
+    {% for r in model_probe_results %}
+    <tr>
+      <td><code>{{ r.name }}</code></td>
+      <td>{% if r.healthy %}<span class="tag ok">健康</span>{% else %}<span class="tag bad">不健康</span>{% endif %}</td>
+      <td class="muted">{{ r.status if r.status is not none else '-' }}</td>
+      <td class="muted">{{ (r.latency_ms ~ ' ms') if r.latency_ms is not none else '-' }}</td>
+      <td class="muted">{{ r.error or '-' }}</td>
     </tr>
     {% endfor %}
   </table>
-  <p class="muted">{{ model_route.note }}</p>
 </div>
+{% endif %}
 {% endblock %}

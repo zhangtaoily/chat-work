@@ -55,6 +55,7 @@ from agent_core.workflow import store as workflow_store
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """启动恢复：技能市场 / 知识库 / 编排 / 自动化任务快照，并挂载调度器
     （PLAN P2.3-P2.6）；官方跨系统编排 seed（幂等，PRD 6.3）。"""
+    await audit.restore()
     await store.restore()
     await knowledge_store.restore()
     await workflow_store.restore()
@@ -236,6 +237,12 @@ class MemoryConsentRequest(BaseModel):
     """PIPL 知情同意开关（PRD 9.2：撤回即清除全部个人记忆）。"""
 
     granted: bool
+
+
+class ModelSelectRequest(BaseModel):
+    """员工自选对话模型（None = 跟随管理员默认）。"""
+
+    name: str | None = None
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -584,6 +591,34 @@ async def audit_list(
         target = auth.user_id
     items = await audit.recent(limit=max(1, min(limit, 500)), user_id=target)
     return {"items": items, "count": len(items)}
+
+
+# ---- 对话模型（多模型可视化配置：管理员注册 / 员工自选，PRD 5.6）----
+
+
+@app.get("/models")
+async def list_chat_models(request: Request) -> dict[str, Any]:
+    """可用对话模型清单（仅启用项，api_key 打码）+ 我的当前选择 + 全局默认。"""
+    auth = await _authenticate_or_401(request)
+    user_id = auth.user_id if auth is not None else ""
+    return {
+        "items": syscfg.list_models(enabled_only=True),
+        "current": syscfg.get_user_model(user_id),
+        "default": syscfg.default_model(),
+    }
+
+
+@app.post("/me/model")
+async def select_chat_model(req: ModelSelectRequest, request: Request) -> dict[str, Any]:
+    """员工自选对话模型（name=null 恢复跟随默认），变更落审计。"""
+    auth = await _authenticate_or_401(request)
+    if auth is None:
+        raise HTTPException(status_code=401, detail="切换模型需要认证")
+    try:
+        result = await syscfg.set_user_model(auth.user_id, req.name, by=auth.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"current": result["model"], "changed": result["changed"]}
 
 
 # ---- 技能市场（PLAN P2.3，PRD 3.4/3.5/5.6）----

@@ -133,10 +133,10 @@ async def intent_node(state: ChatState) -> dict[str, Any]:
     intent_name = skill["name"] if skill else "chat"
     events = [_stage("intent")]
     llm_slots: dict[str, Any] | None = None
-    if skill is None and llm.enabled():
+    if skill is None and llm.enabled(state.get("user_id", "")):
         # LLM 兜底路由（规则优先，LLM 补充）：关键词未命中时由小模型选技能；
         # 抽取结果随 intent 透传给 extract 节点复用（一轮仅一次 LLM 调用）
-        llm_slots = await llm.extract_slots(message)
+        llm_slots = await llm.extract_slots(message, state.get("user_id", ""))
         if llm_slots and llm_slots["skill"] and llm_slots["skill"] != "chat":
             llm_skill = get_skill(llm_slots["skill"])
             if llm_skill is not None:
@@ -252,7 +252,7 @@ async def _llm_fill_missing(
     并再次发 draft_card（桌面端 latest-draft-wins，重复发卡安全）。
     """
     skill = state.get("skill")
-    if not skill or not skill.get("required_fields") or not llm.enabled():
+    if not skill or not skill.get("required_fields") or not llm.enabled(state.get("user_id", "")):
         return result
     draft = dict(result.get("draft") or {})
     missing = [f for f in skill["required_fields"] if f not in draft]
@@ -260,7 +260,7 @@ async def _llm_fill_missing(
         return result
     intent = state.get("intent") or {}
     slots_result = intent.get("llm_slots") or await llm.extract_slots(
-        state.get("message", "")
+        state.get("message", ""), state.get("user_id", "")
     )
     fields = (slots_result or {}).get("fields") or {}
     filled = [f for f in missing if fields.get(f) not in (None, "")]
@@ -1630,7 +1630,10 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
     skill = state.get("skill")
 
     if not skill:
-        text = "收到。我是你的工作助手，可以帮你处理请假申请、待办审批等事务。"
+        # 闲聊轮（LLM 接入点3）：LLM 生成自然回复；未配置/失败回落固定文案
+        text = await llm.chat(state.get("message", ""), state.get("user_id", ""))
+        if text is None:
+            text = "收到。我是你的工作助手，可以帮你处理请假申请、待办审批等事务。"
         events.append({"type": "final", "text": text, "cards": []})
         return {"final": {"text": text, "cards": []}, "events": events}
 

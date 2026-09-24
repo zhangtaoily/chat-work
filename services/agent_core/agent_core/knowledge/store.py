@@ -25,7 +25,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from agent_core import audit
+from agent_core import audit, persist
 from agent_core.knowledge.embedding import (
     backend_tag,
     cosine,
@@ -207,8 +207,6 @@ def _validate_doc(space: str, classification: str, title: str, content: str) -> 
 
 async def _snapshot() -> None:
     r = _get_redis()
-    if r is None:
-        return
     # 向量字段不入快照（restore 后 reindex 重建，同时规避后端切换后的混空间）
     stripped = {
         "docs": {
@@ -218,24 +216,30 @@ async def _snapshot() -> None:
         "gaps": _gaps,
         "seq": _seq,
     }
+    if r is None:
+        await persist.write_json(SNAPSHOT_KEY, stripped)
+        return
     await r.set(SNAPSHOT_KEY, json.dumps(stripped, ensure_ascii=False))
 
 
 async def restore() -> None:
-    """启动恢复（API lifespan 调用）；向量不入快照，检索时自动重建。"""
+    """启动恢复（API lifespan 调用）；Redis 快照优先，无 Redis 读本地文件兜底；
+    向量不入快照，检索时自动重建。"""
     global _seq, _index_backend
+    snap: dict[str, Any] | None = None
     r = _get_redis()
     if r is not None:
         raw = await r.get(SNAPSHOT_KEY)
         if raw:
             snap = json.loads(raw)
-            _docs.update(snap.get("docs", {}))
-            for d in _docs.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
-                d.setdefault("approvals", [])
-            _gaps.update(snap.get("gaps", {}))
-            _seq = int(snap.get("seq", 0))
-            _index_backend = None
-            return
+    if snap is None:
+        snap = await persist.read_json(SNAPSHOT_KEY)
+    if snap:
+        _docs.update(snap.get("docs", {}))
+        for d in _docs.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
+            d.setdefault("approvals", [])
+        _gaps.update(snap.get("gaps", {}))
+        _seq = int(snap.get("seq", 0))
     _index_backend = None
 
 

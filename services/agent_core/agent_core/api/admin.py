@@ -37,7 +37,7 @@ router = APIRouter(prefix="/admin")
 # ---- 配置（env 注入；默认本地冒烟拓扑） ----
 SSO_ISSUER = os.environ.get("SSO_ISSUER", "http://localhost:8012/realms/chat-work")
 CLIENT_ID = "chat-work-desktop"  # 与桌面端同 client（同 realm 一套账号，PRD 5.6.3）
-ADMIN_BASE_URL = os.environ.get("ADMIN_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+ADMIN_BASE_URL = os.environ.get("ADMIN_BASE_URL", "http://127.0.0.1:8011").rstrip("/")
 _REDIRECT_URI = f"{ADMIN_BASE_URL}/admin/callback"
 
 # 管理角色（PRD 5.6.1 矩阵：任一角色可登录工作台；页面级再细分）
@@ -425,7 +425,9 @@ async def automation_status(request: Request, task_id: str) -> RedirectResponse 
 
 
 @router.get("/syscfg", response_model=None)
-async def syscfg_page(request: Request, msg: str = "", err: str = "", probed: str = "") -> RedirectResponse | HTMLResponse:
+async def syscfg_page(
+    request: Request, msg: str = "", err: str = "", probed: str = "", mprobed: str = ""
+) -> RedirectResponse | HTMLResponse:
     sess = require_session(request)
     if sess is None:
         return login_redirect("/admin/syscfg")
@@ -434,6 +436,7 @@ async def syscfg_page(request: Request, msg: str = "", err: str = "", probed: st
     from agent_core import syscfg
 
     probe_results = json.loads(probed) if probed else None
+    model_probe_results = json.loads(mprobed) if mprobed else None
     return _templates.TemplateResponse(
         request,
         "syscfg.html",
@@ -442,8 +445,9 @@ async def syscfg_page(request: Request, msg: str = "", err: str = "", probed: st
             nav="syscfg",
             toggles=syscfg.list_toggles(),
             mcp_servers=syscfg.list_mcp(),
-            model_route=syscfg.model_view(),
+            models_data=syscfg.model_view(),
             probe_results=probe_results,
+            model_probe_results=model_probe_results,
             msg=msg,
             err=err,
         ),
@@ -506,6 +510,113 @@ async def syscfg_mcp_probe(request: Request) -> RedirectResponse | HTMLResponse:
     report = await syscfg.probe_mcp()
     probed = quote(json.dumps(report["results"], ensure_ascii=False))
     return _back(f"/admin/syscfg?probed={probed}", msg=f"已探测 {len(report['results'])} 个 MCP 服务")
+
+
+# ---- 系统配置：LLM 模型注册表（可视化配置，多模型 + 员工自选） ----
+
+
+@router.post("/syscfg/model", response_model=None)
+async def syscfg_model_register(request: Request) -> RedirectResponse | HTMLResponse:
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/syscfg")
+    if bad := _gate(request, sess, {"system_admin"}):
+        return bad
+    from agent_core import syscfg
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/syscfg", err="CSRF 校验失败，操作被拒绝")
+    try:
+        await syscfg.register_model(
+            str(form.get("name", "")),
+            str(form.get("base_url", "")).strip(),
+            str(form.get("model", "")),
+            str(form.get("api_key", "")),
+            by=sess["user_id"],
+        )
+    except ValueError as exc:
+        return _back("/admin/syscfg", err=str(exc))
+    return _back("/admin/syscfg", msg=f"模型 {form.get('name')} 已保存")
+
+
+@router.post("/syscfg/model/delete", response_model=None)
+async def syscfg_model_delete(request: Request) -> RedirectResponse | HTMLResponse:
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/syscfg")
+    if bad := _gate(request, sess, {"system_admin"}):
+        return bad
+    from agent_core import syscfg
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/syscfg", err="CSRF 校验失败，操作被拒绝")
+    name = str(form.get("name", ""))
+    try:
+        await syscfg.delete_model(name, by=sess["user_id"])
+    except ValueError as exc:
+        return _back("/admin/syscfg", err=str(exc))
+    return _back("/admin/syscfg", msg=f"模型 {name} 已删除")
+
+
+@router.post("/syscfg/model/default", response_model=None)
+async def syscfg_model_default(request: Request) -> RedirectResponse | HTMLResponse:
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/syscfg")
+    if bad := _gate(request, sess, {"system_admin"}):
+        return bad
+    from agent_core import syscfg
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/syscfg", err="CSRF 校验失败，操作被拒绝")
+    name = str(form.get("name", ""))
+    try:
+        await syscfg.set_default_model(name, by=sess["user_id"])
+    except ValueError as exc:
+        return _back("/admin/syscfg", err=str(exc))
+    return _back("/admin/syscfg", msg=f"默认模型 → {name}")
+
+
+@router.post("/syscfg/model/toggle", response_model=None)
+async def syscfg_model_toggle(request: Request) -> RedirectResponse | HTMLResponse:
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/syscfg")
+    if bad := _gate(request, sess, {"system_admin"}):
+        return bad
+    from agent_core import syscfg
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/syscfg", err="CSRF 校验失败，操作被拒绝")
+    name = str(form.get("name", ""))
+    value = str(form.get("value", "")) == "true"
+    try:
+        await syscfg.set_model_enabled(name, value, by=sess["user_id"])
+    except ValueError as exc:
+        return _back("/admin/syscfg", err=str(exc))
+    return _back("/admin/syscfg", msg=f"模型 {name} {'已启用' if value else '已停用'}")
+
+
+@router.post("/syscfg/model/probe", response_model=None)
+async def syscfg_model_probe(request: Request) -> RedirectResponse | HTMLResponse:
+    """模型连通性探测：GET {base_url}/models，结果经 mprobed 回显。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/syscfg")
+    if bad := _gate(request, sess, {"system_admin"}):
+        return bad
+    from agent_core import syscfg
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/syscfg", err="CSRF 校验失败，操作被拒绝")
+    report = await syscfg.probe_models()
+    mprobed = quote(json.dumps(report["results"], ensure_ascii=False))
+    return _back(f"/admin/syscfg?mprobed={mprobed}", msg=f"已探测 {len(report['results'])} 个模型")
 
 
 # ---- 工作台 5：审计日志（审计员，PRD 5.6.1/10；导出带水印，PRD 5.6.4） ----

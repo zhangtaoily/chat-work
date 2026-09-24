@@ -30,8 +30,9 @@ partial 止步）/ plan 先出执行计划卡批准后执行 / craft 立即执�
 防护栏（对齐 automation/store）：单次执行超时 30 分钟；运行记录/
 通知截尾 500；科室编排禁 craft 模式（PRD 3.3 规则3）。
 
-存储：进程内 dict/list + Redis 快照（workflow:snapshot，写事件镜像
-+ restore 恢复 + 截尾）——与 automation/skills store 同风格。
+存储：进程内 dict/list + 快照（workflow:snapshot：REDIS_URL 配置走
+Redis，未配置落本地文件兜底；写事件镜像 + restore 恢复 + 截尾）——
+与 automation/skills store 同风格。
 """
 
 import asyncio
@@ -43,7 +44,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
-from agent_core import audit, wecom
+from agent_core import audit, persist, wecom
 from agent_core.guardrail import confirm_store
 
 _SNAPSHOT_KEY = "workflow:snapshot"
@@ -120,10 +121,7 @@ def _get_redis() -> Any:
 
 
 async def _snapshot() -> None:
-    """写事件后镜像快照（无 Redis 时跳过；运行记录/通知截尾防膨胀）。"""
-    r = _get_redis()
-    if r is None:
-        return
+    """写事件后镜像快照（无 Redis 落本地文件兜底；运行记录/通知截尾防膨胀）。"""
     payload = {
         "workflows": _workflows,
         "runs": _runs[-_RUNS_KEEP:],
@@ -132,23 +130,31 @@ async def _snapshot() -> None:
         "run_seq": _run_seq,
         "msg_seq": _msg_seq,
     }
+    r = _get_redis()
+    if r is None:
+        await persist.write_json(_SNAPSHOT_KEY, payload)
+        return
     await r.set(_SNAPSHOT_KEY, json.dumps(payload, ensure_ascii=False))
 
 
 async def restore() -> None:
-    """启动恢复：Redis 快照优先（API lifespan 调用）。"""
+    """启动恢复：Redis 快照优先，无 Redis 读本地文件兜底（API lifespan 调用）。"""
     global _seq, _run_seq, _msg_seq
+    snap: dict[str, Any] | None = None
     r = _get_redis()
     if r is not None:
         raw = await r.get(_SNAPSHOT_KEY)
         if raw:
             snap = json.loads(raw)
-            _workflows.update(snap.get("workflows", {}))
-            _runs.extend(snap.get("runs", []))
-            _notifications.extend(snap.get("notifications", []))
-            _seq = int(snap.get("seq", 0))
-            _run_seq = int(snap.get("run_seq", 0))
-            _msg_seq = int(snap.get("msg_seq", 0))
+    if snap is None:
+        snap = await persist.read_json(_SNAPSHOT_KEY)
+    if snap:
+        _workflows.update(snap.get("workflows", {}))
+        _runs.extend(snap.get("runs", []))
+        _notifications.extend(snap.get("notifications", []))
+        _seq = int(snap.get("seq", 0))
+        _run_seq = int(snap.get("run_seq", 0))
+        _msg_seq = int(snap.get("msg_seq", 0))
 
 
 def reset() -> None:

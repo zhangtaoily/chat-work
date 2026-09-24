@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from agent_core import audit, automation
+from agent_core import audit, automation, syscfg
 from agent_core.automation import store as auto_store
 from agent_core.pipeline import llm
 from agent_core.pipeline.graph import build_graph
@@ -30,10 +30,12 @@ def _reset_and_disable_llm(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     auto_store.stop_scheduler()
     automation.reset()
     skill_store.reset()
+    syscfg.reset()
     asyncio.run(audit.clear())
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     yield
     auto_store.stop_scheduler()
+    syscfg.reset()
     asyncio.run(audit.clear())
 
 
@@ -219,3 +221,31 @@ async def test_chat_llm_failure_falls_back_to_rules(
     )
     assert "已创建定时提醒" in result["final"]["text"]
     assert len(auto_store.list_tasks(owner=_USER)) == 1
+
+
+# ---- 图层：闲聊兜底（format 接入点3）----
+
+
+async def test_chat_llm_smalltalk_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    """技能未命中的闲聊轮 → LLM 生成自然回复（意图路由 + 闲聊共 2 次调用）。"""
+    message = "你好啊"
+    assert match_skill(message) is None  # 前置：规则层必不命中（闲聊）
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+    calls = _mock_http(
+        monkeypatch, {"choices": [{"message": {"content": "你好呀！我是你的工作助手。"}}]}
+    )
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {"user_id": _USER, "session_id": "s-llm-chat", "message": message}
+    )
+    assert result["final"]["text"] == "你好呀！我是你的工作助手。"
+    assert len(calls) == 2  # intent extract_slots（无 tool_calls）+ format 闲聊
+    # 闲聊请求为纯对话补全（不带 tools）
+    assert "tools" not in calls[1]["json"]
+    assert calls[1]["json"]["messages"][-1]["content"] == message
+
+
+async def test_chat_smalltalk_fixed_text_without_llm() -> None:
+    """未配置 LLM → 闲聊回落固定文案（零行为变化）。"""
+    assert llm.enabled() is False
+    assert await llm.chat("你好啊") is None

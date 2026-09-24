@@ -17,7 +17,8 @@ knowledge.embedding 本地降级后端，阈值 0.35），命中即 touch（引�
 ②高频行为自动沉淀（track 同 skill+摘要 ≥3 次，source=auto_consolidated，
 仅偏好/习惯类）③科室管理员从 L2 提炼升级 L3（promote，source=promoted）。
 
-存储：进程内 + 可选 Redis 快照 `memory:snapshot`（对齐 knowledge 模式）。
+存储：进程内 + 快照 `memory:snapshot`（REDIS_URL 配置走 Redis，未配置
+落本地文件兜底；对齐 knowledge 模式）。
 """
 
 import json
@@ -25,7 +26,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from agent_core import audit
+from agent_core import audit, persist
 from agent_core.knowledge.embedding import cosine, embed_texts, sim_threshold
 
 SNAPSHOT_KEY = "memory:snapshot"
@@ -143,27 +144,32 @@ def get(entry_id: str) -> dict[str, Any] | None:
 
 
 async def _snapshot() -> None:
+    stripped = {"entries": _entries, "consent": _consent, "track": _track, "seq": _seq}
     r = _get_redis()
     if r is None:
+        await persist.write_json(SNAPSHOT_KEY, stripped)
         return
-    stripped = {"entries": _entries, "consent": _consent, "track": _track, "seq": _seq}
     await r.set(SNAPSHOT_KEY, json.dumps(stripped, ensure_ascii=False))
 
 
 async def restore() -> None:
-    """启动恢复（API lifespan 调用）。"""
+    """启动恢复（API lifespan 调用）；Redis 快照优先，无 Redis 读本地文件兜底。"""
     global _seq
+    snap: dict[str, Any] | None = None
     r = _get_redis()
     if r is not None:
         raw = await r.get(SNAPSHOT_KEY)
         if raw:
             snap = json.loads(raw)
-            _entries.update(snap.get("entries", {}))
-            for e in _entries.values():
-                e.setdefault("decayed", False)
-            _consent.update(snap.get("consent", {}))
-            _track.update(snap.get("track", {}))
-            _seq = int(snap.get("seq", 0))
+    if snap is None:
+        snap = await persist.read_json(SNAPSHOT_KEY)
+    if snap:
+        _entries.update(snap.get("entries", {}))
+        for e in _entries.values():
+            e.setdefault("decayed", False)
+        _consent.update(snap.get("consent", {}))
+        _track.update(snap.get("track", {}))
+        _seq = int(snap.get("seq", 0))
 
 
 def _check_sensitive(content: str) -> None:

@@ -1,6 +1,6 @@
 // 会话主界面：消息流 + SSE 消费 + HITL 确认交互（PRD 5.2 场景 1-1）
 // Electron：SSO 登录门 + 身份由 id_token.sub 注入（PRD 8.5）；web 冒烟模式无桥直传（MVP 惯例）
-import { Alert, Button, ConfigProvider, Input, Layout, Menu, Modal, Space, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Badge, Button, ConfigProvider, Input, Layout, Menu, Modal, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
   AppstoreOutlined,
@@ -17,7 +17,7 @@ import {
   SettingOutlined,
   SoundOutlined
 } from '@ant-design/icons'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthStatus } from '../../main/auth-core'
 import type { UpdaterState } from '../../main/updater'
 import { ChatTurnView } from './chat/ChatTurn'
@@ -43,6 +43,7 @@ import {
   speechInputSupported,
   type Recognizer
 } from './lib/speech'
+import { useInboxNotify } from './lib/inboxNotify'
 import MarketView from './views/MarketView'
 import KnowledgeView from './views/KnowledgeView'
 import AutomationView from './views/AutomationView'
@@ -67,35 +68,15 @@ const viewTitles: Record<ViewKey, string> = {
   settings: '设置'
 }
 
-const menuItems = [
-  {
-    type: 'group' as const,
-    label: '工作台',
-    children: [
-      { key: 'chat', icon: <CommentOutlined />, label: '会话' },
-      { key: 'market', icon: <AppstoreOutlined />, label: '技能市场' },
-      { key: 'kb', icon: <BookOutlined />, label: '知识库' },
-      { key: 'auto', icon: <ClockCircleOutlined />, label: '自动化' },
-      {
-        key: 'admin',
-        icon: <CloudServerOutlined />,
-        label: (
-          <span>
-            管理后台 <Tag style={{ marginInlineStart: 4 }}>管理员</Tag>
-          </span>
-        )
-      }
-    ]
-  },
-  {
-    type: 'group' as const,
-    label: '个人',
-    children: [
-      { key: 'memory', icon: <BulbOutlined />, label: '我的记忆' },
-      { key: 'settings', icon: <SettingOutlined />, label: '设置' }
-    ]
-  }
-]
+const menuGroupAdmin = {
+  key: 'admin',
+  icon: <CloudServerOutlined />,
+  label: (
+    <span>
+      管理后台 <Tag style={{ marginInlineStart: 4 }}>管理员</Tag>
+    </span>
+  )
+}
 
 function loggedOutStatus(): AuthStatus {
   return { loggedIn: false, userId: '', userName: '', expiresAt: 0 }
@@ -120,6 +101,8 @@ export default function App() {
   const [confirmBusy, setConfirmBusy] = useState(false)
   // 当前视图（默认会话；对齐 prototype 左侧导航）
   const [view, setView] = useState<ViewKey>('chat')
+  // 自动化页 tab（受控提升：通知点击可直达信箱）
+  const [autoTab, setAutoTab] = useState<'tasks' | 'inbox'>('tasks')
   // 皮肤（默认原型靛蓝，localStorage 持久化，设置页可切换）
   const { skinKey, skin, setSkin } = useSkin()
   // null = 认证状态检测中；web 冒烟模式无桥，视为已登录的直传身份
@@ -185,6 +168,53 @@ export default function App() {
       window.open(url, '_blank')
     }
   }, [])
+
+  // 信箱新消息系统通知（Windows toast / 浏览器通知）+ 未读徽标
+  const openInbox = useCallback(() => {
+    setAutoTab('inbox')
+    setView('auto')
+  }, [])
+  const unreadCount = useInboxNotify({
+    enabled: auth?.loggedIn ?? false,
+    onOpenInbox: openInbox
+  })
+
+  // 左侧导航（自动化项带未读徽标，界面内也醒目）
+  const menuItems = useMemo(
+    () => [
+      {
+        type: 'group' as const,
+        label: '工作台',
+        children: [
+          { key: 'chat', icon: <CommentOutlined />, label: '会话' },
+          { key: 'market', icon: <AppstoreOutlined />, label: '技能市场' },
+          { key: 'kb', icon: <BookOutlined />, label: '知识库' },
+          {
+            key: 'auto',
+            icon: <ClockCircleOutlined />,
+            label:
+              unreadCount > 0 ? (
+                <Badge count={unreadCount} size="small" offset={[8, 0]}>
+                  自动化
+                </Badge>
+              ) : (
+                '自动化'
+              )
+          },
+          menuGroupAdmin
+        ]
+      },
+      {
+        type: 'group' as const,
+        label: '个人',
+        children: [
+          { key: 'memory', icon: <BulbOutlined />, label: '我的记忆' },
+          { key: 'settings', icon: <SettingOutlined />, label: '设置' }
+        ]
+      }
+    ],
+    [unreadCount]
+  )
 
   const handleMenuClick = useCallback(
     (info: { key: string }) => {
@@ -701,7 +731,7 @@ export default function App() {
                 ) : view === 'kb' ? (
                   <KnowledgeView />
                 ) : view === 'auto' ? (
-                  <AutomationView />
+                  <AutomationView tab={autoTab} onTabChange={setAutoTab} />
                 ) : view === 'memory' ? (
                   <MemoryView />
                 ) : (

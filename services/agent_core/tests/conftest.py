@@ -4,7 +4,17 @@ from typing import Any
 
 import pytest
 
+from agent_core import persist
 from agent_core.api import auth as auth_mod
+
+
+@pytest.fixture(autouse=True)
+def _isolated_snapshots(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """快照兜底重定向到临时目录：测试不写真实 data/snapshots/（隔离 + 不留痕）。"""
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    persist.set_dir(tmp_path)
+    yield tmp_path
+    persist._DIR = None  # 复位缓存，下个测试重新解析
 
 
 @pytest.fixture

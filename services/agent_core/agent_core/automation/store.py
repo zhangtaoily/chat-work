@@ -36,9 +36,9 @@ PLAN P2.6 p2-6d）。
 extract：params 已是 draft 形态；只读技能 hitl 直通，permission 复用
 角色/区域/科室校验管线）。
 
-存储：进程内 dict/list + Redis 快照（automation:snapshot，写事件
-镜像、restore 恢复，历史/信箱截尾保留最近 500 条）——与 skills/
-store 同风格。
+存储：进程内 dict/list + 快照（automation:snapshot：REDIS_URL 配置走
+Redis，未配置落本地文件 data/snapshots/ 兜底；写事件镜像、restore 恢复，
+历史/信箱截尾保留最近 500 条）——与 skills/store 同风格。
 """
 
 import asyncio
@@ -50,7 +50,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from agent_core import audit, wecom
+from agent_core import audit, persist, wecom
 
 _SNAPSHOT_KEY = "automation:snapshot"
 
@@ -97,10 +97,7 @@ def _get_redis() -> Any:
 
 
 async def _snapshot() -> None:
-    """写事件后镜像快照（无 Redis 时跳过；历史/信箱截尾防膨胀）。"""
-    r = _get_redis()
-    if r is None:
-        return
+    """写事件后镜像快照（无 Redis 落本地文件兜底；历史/信箱截尾防膨胀）。"""
     payload = {
         "tasks": _tasks,
         "history": _history[-_HISTORY_KEEP:],
@@ -108,23 +105,30 @@ async def _snapshot() -> None:
         "seq": _seq,
         "msg_seq": _msg_seq,
     }
+    r = _get_redis()
+    if r is None:
+        await persist.write_json(_SNAPSHOT_KEY, payload)
+        return
     await r.set(_SNAPSHOT_KEY, json.dumps(payload, ensure_ascii=False))
 
 
 async def restore() -> None:
-    """启动恢复：Redis 快照优先（API lifespan 调用，start_scheduler 之前）。"""
+    """启动恢复：Redis 快照优先，无 Redis 读本地文件兜底（API lifespan 调用）。"""
     global _seq, _msg_seq
+    snap: dict[str, Any] | None = None
     r = _get_redis()
     if r is not None:
         raw = await r.get(_SNAPSHOT_KEY)
         if raw:
             snap = json.loads(raw)
-            _tasks.update(snap.get("tasks", {}))
-            _history.extend(snap.get("history", []))
-            _inbox.extend(snap.get("inbox", []))
-            _seq = int(snap.get("seq", 0))
-            _msg_seq = int(snap.get("msg_seq", 0))
-            return
+    if snap is None:
+        snap = await persist.read_json(_SNAPSHOT_KEY)
+    if snap:
+        _tasks.update(snap.get("tasks", {}))
+        _history.extend(snap.get("history", []))
+        _inbox.extend(snap.get("inbox", []))
+        _seq = int(snap.get("seq", 0))
+        _msg_seq = int(snap.get("msg_seq", 0))
 
 
 def reset() -> None:

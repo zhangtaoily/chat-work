@@ -32,6 +32,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Windows 系统 toast 通知需要 AppUserModelID（dev 下用执行路径，打包后 electron-builder 提供）
+  if (process.platform === 'win32') app.setAppUserModelId(process.execPath)
   registerIpcHandlers()
   setupUpdater()
   createWindow()

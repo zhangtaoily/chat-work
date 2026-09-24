@@ -9,9 +9,11 @@
 字段（PRD 10）：user_id / session_id / time / action / tool /
 params_digest（参数摘要，截断防全量泄漏）/ result / duration_ms / detail。
 
-存储：MVP 进程内环形缓冲（5000 条）+ 可选 Redis（REDIS_URL → 热窗
-audit:events 截断 5000 供查询 + 全量归档 audit:archive，EXPIRE 180 天
-满足 PRD 10 留存要求；生产可再对接日志平台冷存）。
+存储：MVP 进程内环形缓冲（5000 条）+ 快照持久化——REDIS_URL 配置走
+Redis（热窗 audit:events 截断 5000 供查询 + 全量归档 audit:archive，
+EXPIRE 180 天满足 PRD 10 留存要求；生产可再对接日志平台冷存）；未配置
+落本地 JSONL（data/snapshots/audit_events.jsonl，增量追加 + 启动装载
+尾部热窗，语义对齐进程内环形缓冲）。
 
 身份注入：API 入口 set_actor 写入 contextvar，任务上下文透传到
 mcp_client 埋点自动携带操作者，避免逐层传参污染工具签名。
@@ -23,6 +25,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
+from agent_core import persist
 from agent_core.config import settings
 
 _AUDIT_KEY = "audit:events"
@@ -108,6 +111,7 @@ async def record(
         await redis.expire(_AUDIT_ARCHIVE_KEY, _AUDIT_RETENTION_SECONDS)
         return
     _memory.append(entry)
+    await persist.append_line(_AUDIT_KEY, entry)  # 无 Redis 落本地文件兜底
 
 
 async def recent(
@@ -130,6 +134,17 @@ async def recent(
     return items[:limit]
 
 
+async def restore() -> None:
+    """启动恢复：Redis 模式数据在 Redis 无需装载；无 Redis 从本地 JSONL
+    装载热窗（API lifespan 调用）。"""
+    if await _get_redis() is not None:
+        return
+    for entry in await persist.read_tail_lines(_AUDIT_KEY, _MAX_ENTRIES):
+        _memory.append(entry)
+
+
 async def clear() -> None:
     """清空内存审计（测试隔离用；Redis 模式不清理）。"""
     _memory.clear()
+    if await _get_redis() is None:
+        await persist.remove(_AUDIT_KEY)

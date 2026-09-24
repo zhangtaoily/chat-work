@@ -20,10 +20,11 @@
 分类（PRD 3.4）：official（信息科，全集团）/ dept（科室技能，
 dept_scope 约束）/ personal（个人）。
 
-存储：进程内 dict + 可选 Redis 快照（skill_store:snapshot，写事件时
-镜像、restore 恢复）——与 audit/slots 同风格；内置技能基线为 published
-（官方/科室技能视为已上架）。registry.match_skill 同步查内存状态，
-仅 published 技能参与路由（下架即时降级闲聊兜底）。
+存储：进程内 dict + 快照（skill_store:snapshot：REDIS_URL 配置走
+Redis，未配置落本地文件兜底；写事件时镜像、restore 恢复）——与
+audit/slots 同风格；内置技能基线为 published（官方/科室技能视为已上架）。
+registry.match_skill 同步查内存状态，仅 published 技能参与路由
+（下架即时降级闲聊兜底）。
 
 使用统计（PRD 3.4）：graph format 节点对触达 MCP 的调用 record_usage
 累加调用量/成功率，供广场展示与技能优化反哺（16.4 灰度观测联动）。
@@ -33,7 +34,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from agent_core import audit
+from agent_core import audit, persist
 
 _SNAPSHOT_KEY = "skill_store:snapshot"
 
@@ -150,32 +151,37 @@ def detail(name: str) -> dict[str, Any] | None:
 
 
 async def _snapshot() -> None:
-    """写事件后镜像快照（无 Redis 时跳过；stats 一并保存，重启不清零）。"""
-    r = _get_redis()
-    if r is None:
-        return
+    """写事件后镜像快照（无 Redis 落本地文件兜底；stats 一并保存，重启不清零）。"""
     payload = {
         "meta": _meta,
         "installs": {u: sorted(v) for u, v in _installs.items()},
         "seq": _seq,
     }
+    r = _get_redis()
+    if r is None:
+        await persist.write_json(_SNAPSHOT_KEY, payload)
+        return
     await r.set(_SNAPSHOT_KEY, json.dumps(payload, ensure_ascii=False))
 
 
 async def restore() -> None:
-    """启动恢复：Redis 快照优先，否则内置基线（API lifespan 调用）。"""
+    """启动恢复：Redis 快照优先，无 Redis 读本地文件兜底；否则内置基线（API lifespan 调用）。"""
+    snap: dict[str, Any] | None = None
     r = _get_redis()
     if r is not None:
         raw = await r.get(_SNAPSHOT_KEY)
         if raw:
             snap = json.loads(raw)
-            _meta.update(snap.get("meta", {}))
-            for m in _meta.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
-                m.setdefault("approvals", [])
-            _installs.update({u: set(v) for u, v in snap.get("installs", {}).items()})
-            global _seq
-            _seq = int(snap.get("seq", 0))
-            return
+    if snap is None:
+        snap = await persist.read_json(_SNAPSHOT_KEY)
+    if snap:
+        _meta.update(snap.get("meta", {}))
+        for m in _meta.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
+            m.setdefault("approvals", [])
+        _installs.update({u: set(v) for u, v in snap.get("installs", {}).items()})
+        global _seq
+        _seq = int(snap.get("seq", 0))
+        return
     _ensure()
 
 

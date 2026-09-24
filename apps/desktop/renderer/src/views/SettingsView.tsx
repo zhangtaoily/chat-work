@@ -1,12 +1,15 @@
-// 设置页：外观（皮肤切换）+ 客户端信息 + 管理后台跳转 + 检查更新
+// 设置页：外观（皮肤切换）+ 对话模型选择 + 客户端信息 + 管理后台跳转 + 检查更新
 import { useEffect, useState } from 'react'
 import { Button, Card, Descriptions, message, Select, Space, Tag, Typography } from 'antd'
-import { BgColorsOutlined, CloudServerOutlined, ReloadOutlined } from '@ant-design/icons'
+import { BgColorsOutlined, CloudServerOutlined, ReloadOutlined, RobotOutlined } from '@ant-design/icons'
 import type { UpdaterState } from '../../../main/updater'
-import { AGENT_CORE_URL } from '../lib/api'
+import { AGENT_CORE_URL, listChatModels, selectChatModel } from '../lib/api'
 import { SKINS, type SkinKey } from '../theme'
 
 const bridge = window.chatwork
+
+// 「跟随默认」哨兵值（Select 不便用 null）
+const FOLLOW_DEFAULT = '__default__'
 
 interface SettingsViewProps {
   skinKey: SkinKey
@@ -17,6 +20,10 @@ export default function SettingsView({ skinKey, onSkinChange }: SettingsViewProp
   const [version, setVersion] = useState('（检测中）')
   const [updateState, setUpdateState] = useState<UpdaterState | null>(null)
   const [checking, setChecking] = useState(false)
+  const [models, setModels] = useState<{ name: string; model: string }[]>([])
+  const [currentModel, setCurrentModel] = useState<string | null>(null)
+  const [defaultModel, setDefaultModel] = useState<string | null>(null)
+  const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
     if (!bridge) {
@@ -28,6 +35,30 @@ export default function SettingsView({ skinKey, onSkinChange }: SettingsViewProp
       .then(setVersion)
       .catch(() => setVersion('未知'))
   }, [])
+
+  useEffect(() => {
+    listChatModels()
+      .then((r) => {
+        setModels(r.items.map((m) => ({ name: m.name, model: m.model })))
+        setCurrentModel(r.current)
+        setDefaultModel(r.default)
+      })
+      .catch(() => setModels([]))
+  }, [])
+
+  const handleModelChange = async (value: string) => {
+    const name = value === FOLLOW_DEFAULT ? null : value
+    setSwitching(true)
+    try {
+      const r = await selectChatModel(name)
+      setCurrentModel(r.current)
+      message.success(name ? `已切换使用模型 ${name}` : '已恢复跟随默认模型')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '切换失败')
+    } finally {
+      setSwitching(false)
+    }
+  }
 
   const handleCheckUpdate = async () => {
     if (!bridge) {
@@ -79,6 +110,34 @@ export default function SettingsView({ skinKey, onSkinChange }: SettingsViewProp
               切换即时生效，默认「原型 · 靛蓝」（对齐交互原型风格）
             </Typography.Text>
           </Space>
+        </Card>
+        <Card title="对话模型" size="small">
+          {models.length === 0 ? (
+            <Typography.Text type="secondary">
+              管理员尚未在系统配置中注册模型，当前走服务端默认配置（LLM_BASE_URL 环境变量）
+            </Typography.Text>
+          ) : (
+            <Space wrap align="center">
+              <RobotOutlined style={{ color: 'var(--ant-color-primary, #4f46e5)' }} />
+              <Typography.Text>对话模型</Typography.Text>
+              <Select
+                value={currentModel ?? FOLLOW_DEFAULT}
+                onChange={(v) => void handleModelChange(v)}
+                loading={switching}
+                style={{ width: 240 }}
+                options={[
+                  {
+                    value: FOLLOW_DEFAULT,
+                    label: defaultModel ? `跟随默认（${defaultModel}）` : '跟随默认（服务端配置）'
+                  },
+                  ...models.map((m) => ({ value: m.name, label: `${m.name} · ${m.model}` }))
+                ]}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                切换后立即对新对话生效；模型由管理员在管理后台「系统配置」中注册
+              </Typography.Text>
+            </Space>
+          )}
         </Card>
         <Card title="客户端" size="small">
           <Descriptions column={1} size="small">
