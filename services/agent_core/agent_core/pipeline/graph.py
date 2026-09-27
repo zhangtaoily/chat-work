@@ -106,6 +106,8 @@ class ChatState(TypedDict, total=False):
     confirmed: bool | None  # 恢复路径标记（POST /confirmations 置 True；
     # LangGraph 输入仅保留 schema 内字段，必须显式声明）
     mode_override: str | None  # 请求级三模式临时切换（API /chat mode，PRD 3.3 规则1）
+    twin_emp_no: str  # 会话锁定分身（App 会话框选择；route/execute 消费，
+    # 该会话消息无需每条 @；消息内显式 @ 优先于锁定值）
     plan_pending: bool | None  # Plan 计划卡已发待批准（hitl 置位，format 区分终态文案）
     plan_approved: bool | None  # Plan 计划批准标记（恢复路径置 True，写步骤随后挂确认卡）
     tool_call: dict[str, Any] | None  # 阶段5输出：待执行工具调用（含幂等键）
@@ -221,9 +223,21 @@ async def route_node(state: ChatState) -> dict[str, Any]:
     """
     events = [_stage("route")]
     message = state.get("message", "")
-    # P1-2.2 @他人分身点名前置短路：布置任务优先于业务关键词匹配
+    # P1-2.2 @他人分身点名前置短路：布置任务优先于业务关键词匹配。
+    # 无显式 @时承接会话锁定分身（App 会话框选择，P1-2.3）：
+    # @优先级高于锁定值；锁定值同样要求账号存在、分身开启且未冻结
     mention = rules.extract_mention(message)
     emp_no = accounts_store.resolve_mention(mention) if mention else None
+    if not emp_no:
+        locked = state.get("twin_emp_no") or ""
+        if (
+            locked
+            and locked != state["user_id"]
+            and accounts_store.get(locked)
+            and accounts_store.is_twin_enabled(locked)
+            and not accounts_store.is_frozen(locked)
+        ):
+            emp_no = locked
     if (
         emp_no
         and emp_no != state["user_id"]
@@ -579,6 +593,10 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
             emp_no = accounts_store.resolve_mention(mention)
             if emp_no:
                 draft["assignee"] = {"value": emp_no, "source": "ask"}
+        elif locked := state.get("twin_emp_no"):
+            # 会话锁定分身（P1-2.3）：无显式 @且尚未指定接收人时，
+            # 布置对象默认锁定分身本人（显式 @ / 已填草稿优先）
+            draft.setdefault("assignee", {"value": locked, "source": "ask"})
         content = rules.extract_assign_content(msg, mention)
         if content:
             draft["content"] = {"value": content, "source": "ask"}
@@ -1576,10 +1594,13 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
 
         # P1-2.1 @分身自由对话：以被@者分身人设 LLM 代答（准入已在 route
         # 兜底校验，此处重解析取被@者；LLM 未配置/失败 → None，format
-        # 回落分身固定文案）。防越权约束在分身 system prompt
+        # 回落分身固定文案）。防越权约束在分身 system prompt。
+        # 被@者解析：显式 @ 优先，无 @ 时承接会话锁定分身（P1-2.3）
         if skill and skill["name"] == "twin_mention_chat":
             mention = rules.extract_mention(state.get("message", ""))
             emp_no = accounts_store.resolve_mention(mention) if mention else None
+            if not emp_no:
+                emp_no = state.get("twin_emp_no") or None
             entry = accounts_store.get(emp_no) if emp_no else None
             if not entry:
                 return {"tool_result": {"error": "分身不可达"}, "events": events}
@@ -1590,6 +1611,9 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
                 twin_emp_no=emp_no,
                 user_id=state["user_id"],
                 capabilities=capabilities,
+                # 公开档案（管理后台已补录的籍贯/学历/专业/岗位）注入人设，
+                # 使「你是哪里人」类问题有据可答；未补录字段如实说未记录
+                profile=accounts_store.profile_of(emp_no),
             )
             return {
                 "tool_result": {

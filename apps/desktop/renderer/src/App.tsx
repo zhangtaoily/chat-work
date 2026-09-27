@@ -1,6 +1,6 @@
 // 会话主界面：消息流 + SSE 消费 + HITL 确认交互（PRD 5.2 场景 1-1）
 // Electron：SSO 登录门 + 身份由 id_token.sub 注入（PRD 8.5）；web 冒烟模式无桥直传（MVP 惯例）
-import { Alert, Badge, Button, ConfigProvider, Input, Layout, Menu, Modal, Space, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Badge, Button, ConfigProvider, Input, Layout, Menu, Modal, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
   AppstoreOutlined,
@@ -34,8 +34,10 @@ import {
   AGENT_CORE_URL,
   ClientVersionTooLowError,
   ConfirmationExpiredError,
+  listTwins,
   streamChat,
-  submitConfirmation
+  submitConfirmation,
+  type TwinCandidate
 } from './lib/api'
 import {
   cancelSpeak,
@@ -89,6 +91,8 @@ function loggedOutStatus(): AuthStatus {
 const SPEECH_INPUT_OK = speechInputSupported()
 // 回复播报开关持久化（localStorage）
 const TTS_PREF_KEY = 'chatwork.tts'
+// 会话锁定分身持久化（P1-2.3：会话框选择固定分身，本会话无需每条 @）
+const TWIN_PREF_KEY = 'chatwork.twin'
 
 const EXAMPLE_PROMPTS = [
   '我下周三想请一天年假，家里有事',
@@ -126,6 +130,9 @@ export default function App() {
   const recognizerRef = useRef<Recognizer | null>(null)
   // 播报开关（localStorage 持久化，车间/仓库免手场景）
   const [ttsOn, setTtsOn] = useState(() => localStorage.getItem(TTS_PREF_KEY) === 'on')
+  // 会话锁定分身（P1-2.3）：'' = Chat-Work 助手本人；选中工号 = 该分身代答整段会话
+  const [twins, setTwins] = useState<TwinCandidate[]>([])
+  const [twinLock, setTwinLock] = useState<string | null>(() => localStorage.getItem(TWIN_PREF_KEY) || null)
   // 会话 ID 全轮固定（幂等键组成部分）；刷新即新会话
   const sessionRef = useRef(crypto.randomUUID())
   const streamRef = useRef<HTMLDivElement>(null)
@@ -137,6 +144,19 @@ export default function App() {
       .then(setAuth)
       .catch(() => setAuth(loggedOutStatus()))
   }, [])
+
+  // 分身候选清单（登录后加载；服务端已过滤关闭/冻结/本人）
+  useEffect(() => {
+    if (!auth?.loggedIn) {
+      setTwins([])
+      return
+    }
+    listTwins()
+      .then((r) => setTwins(r.items))
+      .catch(() => setTwins([]))
+  }, [auth?.loggedIn])
+
+  const lockedTwin = useMemo(() => twins.find((t) => t.emp_no === twinLock), [twins, twinLock])
 
   const handleLogin = useCallback(async () => {
     if (!bridge) return
@@ -314,7 +334,9 @@ export default function App() {
           {
             session_id: sessionRef.current,
             user_id: auth?.loggedIn ? auth.userId : WEB_SMOKE_USER_ID,
-            message: trimmed
+            message: trimmed,
+            // 会话锁定分身：服务端 route 消费（无 @ 时以锁定分身代答）
+            twin_emp_no: twinLock ?? null
           },
           (event) => {
             patchAssistant(assistantId, (turn) => applyEvent(turn, event))
@@ -335,7 +357,7 @@ export default function App() {
         setStreaming(false)
       }
     },
-    [streaming, patchAssistant, auth?.userId, ttsOn]
+    [streaming, patchAssistant, auth?.userId, ttsOn, twinLock]
   )
 
   const send = useCallback(() => {
@@ -670,6 +692,28 @@ export default function App() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Tooltip
                       title={
+                        lockedTwin
+                          ? `正在与「${lockedTwin.name}」的数字分身对话，本会话无需 @；消息内显式 @ 优先`
+                          : '选择同事分身后，本会话由其数字分身代答，无需每条 @'
+                      }
+                    >
+                      <Select
+                        size="large"
+                        style={{ minWidth: 172 }}
+                        value={twinLock ?? ''}
+                        onChange={(v: string) => {
+                          const next = v || null
+                          setTwinLock(next)
+                          localStorage.setItem(TWIN_PREF_KEY, next ?? '')
+                        }}
+                        options={[
+                          { value: '', label: 'Chat-Work 助手' },
+                          ...twins.map((t) => ({ value: t.emp_no, label: `${t.name} 的分身` }))
+                        ]}
+                      />
+                    </Tooltip>
+                    <Tooltip
+                      title={
                         !SPEECH_INPUT_OK
                           ? '当前环境不支持语音输入'
                           : listening
@@ -693,9 +737,11 @@ export default function App() {
                         placeholder={
                           listening
                             ? '正在聆听，请讲话…'
-                            : streaming
-                              ? '助手正在处理…'
-                              : '输入消息，或点击左侧麦克风语音输入'
+                            : lockedTwin
+                              ? `与 ${lockedTwin.name} 的数字分身对话中…`
+                              : streaming
+                                ? '助手正在处理…'
+                                : '输入消息，或点击左侧麦克风语音输入'
                         }
                         disabled={streaming}
                         onChange={(e) => setInput(e.target.value)}

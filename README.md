@@ -26,8 +26,8 @@
 | 阶段 | 目标 | 关键动作 | 验收标志 |
 |------|------|----------|----------|
 | **一：单机 mock 链路（已完成）** | 打通协议契约与交互流程 | 七域 MCP Server + agent-core 流水线 + 桌面端/小程序 + 数字分身组织架构与 @布置任务单 | pytest 386 绿；HITL 确认卡闭环 |
-| **二：真实业务对接** | mock → 真实系统 | 各业务方提供 OpenAPI 与 Service Account → 设 `{XXX}_MODE=http` + `{XXX}_BASE_URL` 联调；接入真实 LLM（`LLM_BASE_URL`）；mcp_bi 对接真实 BI OpenAPI | 真实下单/审批/过账写路径全量走通，代理人双标记在业务系统侧可审计 |
-| **三：生产化运行** | 容器栈实跑 + 安全底座 | infra compose 实跑（Keycloak 替换 mock_idp、APISIX 路由）；`GRAY_PERCENT` 灰度放量；数据持久化（MySQL/Redis） | 生产 env 全量配置；灰度按用户百分比放量；审计可查 |
+| **二：系统基座夯实（当前主攻）** | 生产化底座先行 | infra compose 实跑（Keycloak 替换 mock_idp、APISIX 路由）；数据持久化（MySQL/Redis）；生产 env 全量配置；`GRAY_PERCENT` 灰度放量；Keycloak realm/scope 准备与账号生命周期联动（perm_ver 收敛、jti 黑名单、会话吊销） | 生产 env 全量配置；灰度按用户百分比放量；审计可查 |
+| **三：真实业务对接（后移）** | mock → 真实系统 | 各业务方提供 OpenAPI 与 Service Account → 设 `{XXX}_MODE=http` + `{XXX}_BASE_URL` 联调；接入真实 LLM（`LLM_BASE_URL`）；mcp_bi 对接真实 BI OpenAPI；HR 主数据 OpenAPI 对接（数字分身账号创建来源切 `hr_sync`，种子目录退役） | 真实下单/审批/过账写路径全量走通，代理人双标记在业务系统侧可审计 |
 | **四：数字分身 → 集团大脑** | 从个人分身到组织智能 | 组织记忆沉淀（跨人会话知识入库）；自动化任务扩面（巡检/预警/周报）；跨域编排技能（如「订单→生产→发货」全链路）；小程序成为移动触点 | 例行决策自动化率提升；新员工零培训上手 |
 
 ## ⚠️ 当前状态：业务系统对接均为 Mock 假数据

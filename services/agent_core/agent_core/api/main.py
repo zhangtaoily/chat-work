@@ -118,6 +118,12 @@ class ChatRequest(BaseModel):
     user_id: str = Field(default="")
     message: str = Field(min_length=1)
     mode: str | None = Field(default=None, pattern="^(ask|plan|craft)$")
+    twin_emp_no: str | None = Field(
+        default=None,
+        min_length=1,
+        description="会话锁定分身工号（App 会话框选择；本会话消息无需每条 @，"
+        "消息内显式 @ 优先于锁定值；服务端按分身可达性校验）",
+    )
 
 
 class ConfirmRequest(BaseModel):
@@ -348,6 +354,10 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         if req.mode:
             # 请求级三模式临时切换（PRD 3.3 规则1，PLAN P2.6）
             initial["mode_override"] = req.mode
+        if req.twin_emp_no:
+            # 会话锁定分身（App 会话框选择）：route/execute 消费，
+            # 该会话消息无需每条 @；可达性由 route 按 accounts 口径校验
+            initial["twin_emp_no"] = req.twin_emp_no
         actor_token = None
         if auth is not None:
             # 身份上下文进流水线（permission 节点消费，PLAN P1.1）
@@ -615,6 +625,28 @@ async def audit_list(
             raise HTTPException(status_code=403, detail="仅可查询本人审计记录")
         target = auth.user_id
     items = await audit.recent(limit=max(1, min(limit, 500)), user_id=target)
+    return {"items": items, "count": len(items)}
+
+
+# ---- 会话锁定分身（P1-2.3：App 会话框选择固定分身，无需每条 @）----
+
+
+@app.get("/twins")
+async def twin_candidates(request: Request) -> dict[str, Any]:
+    """可对话分身候选（App 会话框下拉数据源）：分身开启且未冻结，
+    不含本人（@自己语义不成立）；工号/姓名/部门供选择器展示。"""
+    auth = await _authenticate_or_401(request)
+    user_id = auth.user_id if auth is not None else ""
+    items = [
+        {
+            "emp_no": a["emp_no"],
+            "name": a["name"],
+            "dept": a["dept"],
+            "profile": a.get("profile") or {},
+        }
+        for a in accounts_store.list_accounts()
+        if a["twin_enabled"] and not a["frozen"] and a["emp_no"] != user_id
+    ]
     return {"items": items, "count": len(items)}
 
 

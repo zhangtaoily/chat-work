@@ -44,7 +44,13 @@ _DIRECTORY: dict[str, dict[str, Any]] = {
 
 _twins: dict[str, bool] = {}  # 缺省 True（分身默认开启）
 _frozen: dict[str, bool] = {}  # 缺省 False
+# 档案补录（管理后台手工维护；P2 切 hr_sync 后由 HR 主数据权威覆盖）。
+# 白名单见 _PROFILE_FIELDS，后续扩字段只加键即可
+_profiles: dict[str, dict[str, str]] = {}
 _redis_client: Any = None
+
+# 账号档案字段白名单（籍贯/学历/专业/岗位；仅 admin 来源可写）
+_PROFILE_FIELDS: tuple[str, ...] = ("native_place", "education", "major", "position")
 
 
 def _get_redis() -> Any:
@@ -61,14 +67,15 @@ def _get_redis() -> Any:
 
 
 def reset() -> None:
-    """清空运行时开关态（测试隔离用；目录为静态种子不动）。"""
+    """清空运行时开关态与档案补录（测试隔离用；目录为静态种子不动）。"""
     _twins.clear()
     _frozen.clear()
+    _profiles.clear()
 
 
 async def _snapshot() -> None:
     """写事件后镜像快照（无 Redis 落本地文件兜底）。"""
-    payload = {"twins": _twins, "frozen": _frozen}
+    payload = {"twins": _twins, "frozen": _frozen, "profiles": _profiles}
     r = _get_redis()
     if r is None:
         await persist.write_json(_SNAPSHOT_KEY, payload)
@@ -89,6 +96,9 @@ async def restore() -> None:
     if snap:
         _twins.update({u: bool(v) for u, v in snap.get("twins", {}).items()})
         _frozen.update({u: bool(v) for u, v in snap.get("frozen", {}).items()})
+        _profiles.update(
+            {u: {k: str(v) for k, v in p.items() if k in _PROFILE_FIELDS} for u, p in snap.get("profiles", {}).items()}
+        )
 
 
 # ---- 查询（同步无 IO）----
@@ -147,6 +157,7 @@ def list_accounts() -> list[dict[str, Any]]:
                 "roles": list(entry["roles"]),
                 "manager": mgr,
                 "manager_name": name_of(mgr) if mgr else None,
+                "profile": dict(_profiles.get(emp_no, {})),
                 "twin_enabled": is_twin_enabled(emp_no),
                 "frozen": is_frozen(emp_no),
             }
@@ -187,3 +198,34 @@ async def set_frozen(emp_no: str, frozen: bool, *, by: str) -> None:
         detail=f"{'冻结' if frozen else '解冻'}账号 {emp_no}",
     )
     await _snapshot()
+
+
+def profile_of(emp_no: str) -> dict[str, str]:
+    """账号档案（已补录字段副本；未补录返回空 dict）。"""
+    return dict(_profiles.get(emp_no, {}))
+
+
+async def update_profile(emp_no: str, fields: dict[str, str], *, by: str) -> dict[str, str]:
+    """档案补录（管理后台「数字分身账号」工作台）：白名单字段整体提交，
+    空串=清除该字段；P2 切 hr_sync 后由 HR 主数据权威覆盖本模块补录值。"""
+    if emp_no not in _DIRECTORY:
+        raise ValueError(f"账号 {emp_no} 不存在")
+    clean = {
+        k: v.strip()
+        for k in _PROFILE_FIELDS
+        if (v := fields.get(k, "")) and v.strip()
+    }
+    if clean:
+        _profiles[emp_no] = clean
+    else:
+        _profiles.pop(emp_no, None)
+    await audit.record(
+        "account_profile",
+        tool="accounts_store",
+        params={"emp_no": emp_no, "fields": sorted(clean)},
+        user_id=by or None,
+        result="ok",
+        detail=f"补录 {emp_no} 档案：{'、'.join(sorted(clean)) or '（已清空）'}",
+    )
+    await _snapshot()
+    return dict(clean)

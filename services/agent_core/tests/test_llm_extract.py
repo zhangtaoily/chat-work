@@ -146,6 +146,48 @@ async def test_extract_slots_degrades(monkeypatch: pytest.MonkeyPatch) -> None:
     assert await llm.extract_slots("随便说点什么") is None
 
 
+# ---- 单元层：llm.twin_chat（分身人设 + 公开档案注入）----
+
+
+def _chat_payload(text: str) -> dict[str, Any]:
+    """OpenAI 兼容普通对话响应体。"""
+    return {"choices": [{"message": {"content": text}}]}
+
+
+async def test_twin_chat_injects_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """@分身自由对话：已补录公开档案注入人设（「你是哪里人」类有据可答）；
+    档案段同时要求未补录字段如实说明未记录，不得以「未授权公开」拒答。"""
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+    calls = _mock_http(monkeypatch, _chat_payload("ok"))
+    reply = await llm.twin_chat(
+        "你是哪里人",
+        twin_name="李四",
+        twin_emp_no="E1002",
+        profile={"native_place": "浙江杭州", "education": "本科", "major": "市场营销"},
+    )
+    assert reply == "ok"
+    system_prompt = calls[0]["json"]["messages"][0]["content"]
+    assert "籍贯：浙江杭州" in system_prompt
+    assert "学历：本科" in system_prompt
+    assert "专业：市场营销" in system_prompt
+    assert "岗位：" not in system_prompt  # 未补录字段不伪造档案行
+    assert "档案中未记录" in system_prompt  # 拒答口径修正为如实说明
+
+
+async def test_twin_chat_without_profile_keeps_prompt_plain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """档案未补录（None/空 dict）→ 不注入档案段，人设保持原样。"""
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+    calls = _mock_http(monkeypatch, _chat_payload("ok"))
+    await llm.twin_chat("你是哪里人", twin_name="李四", twin_emp_no="E1002", profile={})
+    await llm.twin_chat("你是哪里人", twin_name="李四", twin_emp_no="E1002")
+    assert len(calls) == 2
+    for call in calls:
+        # 只校验档案段特征串（人设基线本身提到「公开档案」字样）
+        assert "已补录的公开档案" not in call["json"]["messages"][0]["content"]
+
+
 # ---- 图层：LLM 兜底路由 + 补槽位 + 降级回归 ----
 
 

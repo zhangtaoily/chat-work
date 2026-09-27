@@ -14,8 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# lib/ 仅忽略打包产物根目录；不得误伤 apps/desktop/renderer/src/lib/ 源码
+/lib/
+/lib64/
 parts/
 sdist/
 var/

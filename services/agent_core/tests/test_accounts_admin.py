@@ -11,6 +11,7 @@ import asyncio
 import time
 from collections.abc import Iterator
 from typing import Any
+from urllib.parse import unquote
 from uuid import uuid4
 
 import jwt as pyjwt
@@ -118,7 +119,10 @@ def test_system_admin_readonly(client: TestClient) -> None:
     sess = login_as(client, "E8001", ["system_admin"])
     r = go(client, "/admin/accounts")
     assert r.status_code == 200
-    assert "只读" in r.text
+    assert "查看" in r.text and "/admin/accounts/E1001/profile" not in r.text  # 列表仅查看入口
+    r = go(client, "/admin/accounts/E1001")
+    assert r.status_code == 200
+    assert "只读" in r.text and "/admin/accounts/E1001/profile" not in r.text
     r = post(client, "/admin/accounts/E1001/twin", {"_csrf": sess["csrf"], "value": "false"})
     assert r.status_code == 403
     assert accounts_store.is_twin_enabled("E1001")
@@ -132,6 +136,41 @@ def test_org_admin_page_lists_directory(client: TestClient) -> None:
     assert len(accounts_store.list_accounts()) == 13
     for frag in ("E1001", "张三", "王五", "E8002", "开启", "正常"):
         assert frag in r.text
+
+
+# ---- 账号详情页（独立编辑入口，替代列表页内联表单）----
+
+
+def test_account_detail_renders_edit_forms(client: TestClient) -> None:
+    """org_admin 打开详情页：基本信息 + 全部编辑表单集中于此。"""
+    login_as(client, "E8001", ["org_admin"])
+    r = go(client, "/admin/accounts/E1001")
+    assert r.status_code == 200
+    for frag in ("张三", "销售科", "保存档案", "重置密码", "分身开启", "关闭分身", "授予"):
+        assert frag in r.text
+    for action in ("twin", "freeze", "profile", "grants", "password"):
+        assert f"/admin/accounts/E1001/{action}" in r.text
+
+
+def test_account_detail_unknown_404(client: TestClient) -> None:
+    login_as(client, "E8001", ["org_admin"])
+    assert go(client, "/admin/accounts/E9999").status_code == 404
+
+
+def test_account_detail_role_gate(client: TestClient) -> None:
+    """auditor 无账号工作台角色：详情页 403（与列表页同一门禁）。"""
+    login_as(client, "E8004", ["auditor"])
+    assert go(client, "/admin/accounts/E1001").status_code == 403
+
+
+def test_post_redirects_back_to_detail(client: TestClient) -> None:
+    """详情页发起的操作回跳详情页（不回列表页），flash 提示在原页展示。"""
+    sess = login_as(client, "E8001", ["org_admin"])
+    r = post(client, "/admin/accounts/E1001/profile", {"_csrf": sess["csrf"], "education": "本科"})
+    assert r.status_code == 302
+    assert r.headers["location"].startswith("/admin/accounts/E1001")
+    assert "msg=" in r.headers["location"]
+    assert accounts_store.profile_of("E1001") == {"education": "本科"}
 
 
 # ---- 分身开关 ----
@@ -247,6 +286,62 @@ def test_password_reset(
     assert calls == [("/internal/users/E1001/password", {"password": "NewPass@2026"})]
     events = asyncio.run(audit.recent(50))
     assert any(e["action"] == "account_password_reset" for e in events)
+
+
+# ---- 档案补录（籍贯/学历/专业/岗位，PRD 8.5.6 admin 来源）----
+
+
+def test_account_profile_update_and_audit(client: TestClient) -> None:
+    sess = login_as(client, "E8001", ["org_admin"])
+    fields = {
+        "native_place": "浙江杭州",
+        "education": "本科",
+        "major": "市场营销",
+        "position": "销售代表",
+    }
+    r = post(client, "/admin/accounts/E1001/profile", {"_csrf": sess["csrf"], **fields})
+    assert r.status_code == 302
+    assert "msg=" in r.headers["location"]
+    assert accounts_store.profile_of("E1001") == fields
+    # 列表视图带档案，页面渲染 tag 形式展示
+    assert accounts_store.list_accounts()[0]["profile"]["education"] == "本科"
+    login_as(client, "E8001", ["org_admin"])
+    r = go(client, "/admin/accounts")
+    assert "籍贯:浙江杭州" in r.text and "专业:市场营销" in r.text
+    events = asyncio.run(audit.recent(50))
+    assert any(e["action"] == "account_profile" and e["user_id"] == "E8001" for e in events)
+
+
+def test_account_profile_whitelist_and_clear(client: TestClient) -> None:
+    sess = login_as(client, "E8001", ["org_admin"])
+    r = post(
+        client,
+        "/admin/accounts/E1002/profile",
+        {"_csrf": sess["csrf"], "education": "硕士", "hacker_field": "x"},
+    )
+    assert r.status_code == 302
+    assert accounts_store.profile_of("E1002") == {"education": "硕士"}
+    # 空串=清除该字段；全部清空后档案移除
+    r = post(client, "/admin/accounts/E1002/profile", {"_csrf": sess["csrf"], "education": ""})
+    assert r.status_code == 302
+    assert accounts_store.profile_of("E1002") == {}
+    assert "已清空" in unquote(r.headers["location"])
+    assert all(a["profile"] == {} for a in accounts_store.list_accounts())
+
+
+def test_account_profile_unknown_account(client: TestClient) -> None:
+    sess = login_as(client, "E8001", ["org_admin"])
+    r = post(client, "/admin/accounts/E9999/profile", {"_csrf": sess["csrf"], "education": "本科"})
+    assert r.status_code == 302
+    assert "err=" in r.headers["location"]
+
+
+def test_account_profile_role_gate(client: TestClient) -> None:
+    """system_admin 只读：档案 POST 被拒且状态不变（同 twin/freeze 门禁口径）。"""
+    sess = login_as(client, "E8001", ["system_admin"])
+    r = post(client, "/admin/accounts/E1001/profile", {"_csrf": sess["csrf"], "education": "博士"})
+    assert r.status_code == 403
+    assert accounts_store.profile_of("E1001") == {}
 
 
 # ---- 技能授权绑定（deny 语义，P0-2/P0-3 联动）----

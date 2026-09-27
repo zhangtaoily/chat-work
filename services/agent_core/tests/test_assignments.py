@@ -6,14 +6,20 @@ Store 层：直属上级准入（防越权布置）、分身开关/冻结防线�
 """
 
 import asyncio
+import time
 from collections.abc import Iterator
+from typing import Any
 
+import jwt as pyjwt
 import pytest
+from fastapi.testclient import TestClient
 
 from agent_core import audit
 from agent_core.accounts import store as accounts
+from agent_core.api import auth as auth_mod
+from agent_core.api.main import app
 from agent_core.assignments import store as assignments
-from agent_core.pipeline import rules
+from agent_core.pipeline import llm, rules
 from agent_core.pipeline.graph import build_graph
 from agent_core.skills import store as skill_store
 from agent_core.skills.registry import match_skill
@@ -275,6 +281,27 @@ async def test_chat_mention_chat_twin_disabled_falls_back() -> None:
     assert "数字分身" not in result["final"]["text"]
 
 
+async def test_chat_mention_chat_passes_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """@分身自由对话：账号档案（管理后台已补录的公开口径）随人设下发，
+    使「你是哪里人」类问题以档案事实作答、未补录字段如实说未记录。"""
+    captured: dict[str, Any] = {}
+
+    async def fake_twin_chat(message: str, **kw: Any) -> str:
+        captured.update(kw)
+        return "代答"
+
+    monkeypatch.setattr(llm, "twin_chat", fake_twin_chat)
+    await accounts.update_profile(
+        "E1002", {"native_place": "浙江杭州", "education": "本科"}, by="E8001"
+    )
+    graph = build_graph().compile()
+    await graph.ainvoke(
+        {"user_id": "E1003", "session_id": "s-mention-prof", "message": "@李四 你是哪里人"}
+    )
+    assert captured["twin_emp_no"] == "E1002"
+    assert captured["profile"] == {"native_place": "浙江杭州", "education": "本科"}
+
+
 async def test_chat_mention_chat_self_or_unknown_falls_back() -> None:
     """@自己 / @无法解析的人名 → 不代答，落闲聊兜底。"""
     graph = build_graph().compile()
@@ -286,6 +313,105 @@ async def test_chat_mention_chat_self_or_unknown_falls_back() -> None:
         {"user_id": "E1003", "session_id": "s-mention-4", "message": "@赵六 你是谁"}
     )
     assert "数字分身" not in unknown["final"]["text"]
+
+
+# ---- 会话锁定分身（P1-2.3：会话框选择固定分身，本会话无需每条 @）----
+
+
+async def test_locked_twin_routes_without_mention() -> None:
+    """锁定分身后消息不带 @也由该分身代答（LLM 未配置回落分身固定文案）。"""
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {"user_id": "E1003", "session_id": "s-lock-1", "message": "你是哪里人", "twin_emp_no": "E1002"}
+    )
+    text = result["final"]["text"]
+    assert "李四" in text and "数字分身" in text
+
+
+async def test_locked_twin_explicit_mention_wins() -> None:
+    """消息内显式 @ 优先于锁定值：@郑拓 仍以郑拓分身代答。"""
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {"user_id": "E1003", "session_id": "s-lock-2", "message": "@郑拓 你是谁", "twin_emp_no": "E1002"}
+    )
+    text = result["final"]["text"]
+    assert "郑拓" in text and "李四" not in text
+
+
+async def test_locked_twin_disabled_falls_back() -> None:
+    """锁定分身被关闭 → 可达性校验失败，回落闲聊兜底（不代答）。"""
+    await accounts.set_twin("E1002", False, by="E8001")
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {"user_id": "E1003", "session_id": "s-lock-3", "message": "你是哪里人", "twin_emp_no": "E1002"}
+    )
+    assert "数字分身" not in result["final"]["text"]
+
+
+async def test_locked_twin_self_rejected() -> None:
+    """锁定自己 → @自己语义不成立，不代答。"""
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {"user_id": "E1003", "session_id": "s-lock-4", "message": "你是谁", "twin_emp_no": "E1003"}
+    )
+    assert "数字分身" not in result["final"]["text"]
+
+
+async def test_locked_twin_assign_task_defaults_to_locked() -> None:
+    """锁定分身 + 布置语义（截止短语）→ 任务单流程，接收人默认锁定分身
+    （E1003 是 E1002 直属上级，store 准入通过；无 @ 不再补问布置给谁）。"""
+    graph = build_graph().compile()
+    result = await graph.ainvoke(
+        {
+            "user_id": "E1003",
+            "session_id": "s-lock-5",
+            "message": "周五前完成华东区销售报表",
+            "twin_emp_no": "E1002",
+        }
+    )
+    text = result["final"]["text"]
+    assert "已向「李四」的数字分身布置任务" in text
+    assert "华东区销售报表" in text
+
+
+# ---- REST：会话锁定分身候选（P1-2.3 App 会话框下拉数据源）----
+
+
+def _bearer_headers(rsa_key: Any, sub: str) -> dict[str, str]:
+    """签发测试 JWT（口径同 test_api_auth.make_token，本文件内自用）。"""
+    now = int(time.time())
+    claims: dict[str, Any] = {
+        "iss": auth_mod.SSO_ISSUER,
+        "sub": sub,
+        "idp": "ad",
+        "idp_sub": f"{sub}@corp.com",
+        "dept": "事业部A/销售科",
+        "roles": ["employee"],
+        "perm_ver": 17,
+        "aud": auth_mod.SSO_AUDIENCE,
+        "sid": f"sess-{sub}",
+        "iat": now,
+        "exp": now + 1800,
+        "jti": f"jti-{sub}",
+    }
+    token = pyjwt.encode(claims, rsa_key, algorithm="RS256", headers={"kid": "test-kid"})
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_rest_twin_candidates(rsa_key: Any) -> None:
+    """/twins：候选 = 分身开启且未冻结且非本人；profile 一并下发（下拉展示）。"""
+    client = TestClient(app)
+    r = client.get("/twins")
+    assert r.status_code == 200
+    smoke = r.json()["items"]
+    assert len(smoke) == 13  # 冒烟口径（未认证 user_id=""）：全目录分身开启且未冻结
+    assert {"emp_no", "name", "dept", "profile"} <= set(smoke[0])
+
+    asyncio.run(accounts.set_twin("E1002", False, by="E8001"))
+    r = client.get("/twins", headers=_bearer_headers(rsa_key, "E1003"))
+    items = r.json()["items"]
+    assert all(i["emp_no"] not in {"E1002", "E1003"} for i in items)  # 关闭/本人不列
+    assert len(items) == 11  # 13 - 关闭的 E1002 - 本人 E1003
 
 
 # ---- 分身能力清单（P1-2.1 能力上下文注入：只列实际授予的技能）----

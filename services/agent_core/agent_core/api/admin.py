@@ -781,8 +781,6 @@ async def accounts_page(request: Request, msg: str = "", err: str = "") -> Redir
     for a in items:
         a["granted"] = skill_store.granted_names(a["emp_no"])
         a["revoked"] = skill_store.revoked_names(a["emp_no"])
-    # 授权下拉只列写入类技能：deny 语义仅约束写路径（读路径由数据范围保证）
-    skills = [m for m in skill_store.list_meta() if m["rw"] == "write"]
     return _templates.TemplateResponse(
         request,
         "accounts.html",
@@ -790,7 +788,42 @@ async def accounts_page(request: Request, msg: str = "", err: str = "") -> Redir
             sess,
             nav="accounts",
             items=items,
-            skills=skills,
+            can_admin=bool(_ACCOUNT_ADMINS & set(sess["roles"])),
+            msg=msg,
+            err=err,
+        ),
+    )
+
+
+@router.get("/accounts/{emp_no}", response_model=None)
+async def account_detail(
+    request: Request, emp_no: str, msg: str = "", err: str = ""
+) -> RedirectResponse | HTMLResponse:
+    """账号详情页（独立编辑入口）：列表页只留状态总览 + 「修改」按钮，
+    分身开关/冻结/档案补录/技能授权/密码重置集中在详情页操作。
+    org_admin 可编辑；system_admin 只读查看（PRD 5.6.1 角色矩阵）。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect(f"/admin/accounts/{emp_no}")
+    if bad := _gate(request, sess, _ACCOUNT_VIEWERS):
+        return bad
+    from agent_core.accounts import store as accounts_store
+    from agent_core.skills import store as skill_store
+
+    account = next((a for a in accounts_store.list_accounts() if a["emp_no"] == emp_no), None)
+    if account is None:
+        return _render_error(request, 404, f"账号 {emp_no} 不存在")
+    return _templates.TemplateResponse(
+        request,
+        "account_detail.html",
+        page_ctx(
+            sess,
+            nav="accounts",
+            a=account,
+            granted=skill_store.granted_names(emp_no),
+            revoked=skill_store.revoked_names(emp_no),
+            # 授权下拉只列写入类技能：deny 语义仅约束写路径（读路径由数据范围保证）
+            skills=[m for m in skill_store.list_meta() if m["rw"] == "write"],
             can_admin=bool(_ACCOUNT_ADMINS & set(sess["roles"])),
             msg=msg,
             err=err,
@@ -810,13 +843,13 @@ async def account_twin(request: Request, emp_no: str) -> RedirectResponse | HTML
 
     form = await request.form()
     if not verify_csrf(sess, form):
-        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+        return _back(f"/admin/accounts/{emp_no}", err="CSRF 校验失败，操作被拒绝")
     enabled = str(form.get("value", "")) == "true"
     try:
         await accounts_store.set_twin(emp_no, enabled, by=sess["user_id"])
     except ValueError as exc:
-        return _back("/admin/accounts", err=str(exc))
-    return _back("/admin/accounts", msg=f"{emp_no} 数字分身已{'开启' if enabled else '关闭'}")
+        return _back(f"/admin/accounts/{emp_no}", err=str(exc))
+    return _back(f"/admin/accounts/{emp_no}", msg=f"{emp_no} 数字分身已{'开启' if enabled else '关闭'}")
 
 
 @router.post("/accounts/{emp_no}/freeze", response_model=None)
@@ -832,10 +865,10 @@ async def account_freeze(request: Request, emp_no: str) -> RedirectResponse | HT
 
     form = await request.form()
     if not verify_csrf(sess, form):
-        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+        return _back(f"/admin/accounts/{emp_no}", err="CSRF 校验失败，操作被拒绝")
     freeze = str(form.get("action", "")) == "freeze"
     if freeze and emp_no == sess["user_id"]:
-        return _back("/admin/accounts", err="不能冻结当前登录账号")
+        return _back(f"/admin/accounts/{emp_no}", err="不能冻结当前登录账号")
     try:
         await accounts_store.set_frozen(emp_no, freeze, by=sess["user_id"])
         if freeze:
@@ -848,10 +881,10 @@ async def account_freeze(request: Request, emp_no: str) -> RedirectResponse | HT
         except Exception as exc:  # noqa: BLE001 — IdP 失败降级为提示，agent 侧已生效
             idp_note = f"（IdP 侧{'停用' if freeze else '启用'}失败：{exc}）"
     except ValueError as exc:
-        return _back("/admin/accounts", err=str(exc))
+        return _back(f"/admin/accounts/{emp_no}", err=str(exc))
     if freeze:
-        return _back("/admin/accounts", msg=f"账号 {emp_no} 已冻结（token 立即失效）{idp_note}")
-    return _back("/admin/accounts", msg=f"账号 {emp_no} 已解冻{idp_note}")
+        return _back(f"/admin/accounts/{emp_no}", msg=f"账号 {emp_no} 已冻结（token 立即失效）{idp_note}")
+    return _back(f"/admin/accounts/{emp_no}", msg=f"账号 {emp_no} 已解冻{idp_note}")
 
 
 @router.post("/accounts/{emp_no}/password", response_model=None)
@@ -866,14 +899,14 @@ async def account_password(request: Request, emp_no: str) -> RedirectResponse | 
 
     form = await request.form()
     if not verify_csrf(sess, form):
-        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+        return _back(f"/admin/accounts/{emp_no}", err="CSRF 校验失败，操作被拒绝")
     new_password = str(form.get("password", ""))
     if len(new_password) < 8:
-        return _back("/admin/accounts", err="新密码至少 8 位")
+        return _back(f"/admin/accounts/{emp_no}", err="新密码至少 8 位")
     try:
         await _idp_post(f"/internal/users/{emp_no}/password", {"password": new_password})
     except Exception as exc:  # noqa: BLE001 — IdP 不可达/未知工号
-        return _back("/admin/accounts", err=f"密码重置失败：{exc}")
+        return _back(f"/admin/accounts/{emp_no}", err=f"密码重置失败：{exc}")
     await audit.record(
         "account_password_reset",
         tool="admin_web",
@@ -882,7 +915,7 @@ async def account_password(request: Request, emp_no: str) -> RedirectResponse | 
         result="ok",
         detail=f"重置 {emp_no} 登录密码（明文不落审计）",
     )
-    return _back("/admin/accounts", msg=f"账号 {emp_no} 密码已重置")
+    return _back(f"/admin/accounts/{emp_no}", msg=f"账号 {emp_no} 密码已重置")
 
 
 @router.post("/accounts/{emp_no}/grants", response_model=None)
@@ -900,9 +933,9 @@ async def account_grants(request: Request, emp_no: str) -> RedirectResponse | HT
 
     form = await request.form()
     if not verify_csrf(sess, form):
-        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+        return _back(f"/admin/accounts/{emp_no}", err="CSRF 校验失败，操作被拒绝")
     if accounts_store.get(emp_no) is None:
-        return _back("/admin/accounts", err=f"账号 {emp_no} 不存在")
+        return _back(f"/admin/accounts/{emp_no}", err=f"账号 {emp_no} 不存在")
     name = str(form.get("skill", ""))
     action = str(form.get("action", ""))
     try:
@@ -916,16 +949,41 @@ async def account_grants(request: Request, emp_no: str) -> RedirectResponse | HT
                 result="ok",
                 detail=f"授予 {emp_no} 技能「{name}」",
             )
-            return _back("/admin/accounts", msg=f"已向 {emp_no} 授予技能「{name}」")
+            return _back(f"/admin/accounts/{emp_no}", msg=f"已向 {emp_no} 授予技能「{name}」")
         if action == "revoke":
             await skill_store.revoke_access(
                 name, user_id=emp_no, by=sess["user_id"], note=str(form.get("note", ""))
             )
             return _back(
-                "/admin/accounts",
+                f"/admin/accounts/{emp_no}",
                 msg=f"已回收 {emp_no} 对「{name}」的授权，写路径立即拒绝",
             )
     except ValueError as exc:
-        return _back("/admin/accounts", err=str(exc))
-    return _back("/admin/accounts", err="未知操作")
+        return _back(f"/admin/accounts/{emp_no}", err=str(exc))
+    return _back(f"/admin/accounts/{emp_no}", err="未知操作")
+
+
+@router.post("/accounts/{emp_no}/profile", response_model=None)
+async def account_profile(request: Request, emp_no: str) -> RedirectResponse | HTMLResponse:
+    """档案补录（籍贯/学历/专业/岗位，PRD 8.5.6 admin 来源）：store 层白名单
+    过滤，空串=清除字段；P2 切 hr_sync 后由 HR 主数据权威覆盖补录值。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/accounts")
+    if bad := _gate(request, sess, _ACCOUNT_ADMINS):
+        return bad
+    from agent_core.accounts import store as accounts_store
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back(f"/admin/accounts/{emp_no}", err="CSRF 校验失败，操作被拒绝")
+    fields = {k: str(form.get(k, "")) for k in accounts_store._PROFILE_FIELDS}
+    try:
+        saved = await accounts_store.update_profile(emp_no, fields, by=sess["user_id"])
+    except ValueError as exc:
+        return _back(f"/admin/accounts/{emp_no}", err=str(exc))
+    return _back(
+        f"/admin/accounts/{emp_no}",
+        msg=f"已保存 {emp_no} 档案（{len(saved)} 项）" if saved else f"已清空 {emp_no} 档案",
+    )
 

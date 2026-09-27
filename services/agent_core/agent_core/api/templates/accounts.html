@@ -3,13 +3,13 @@
 {% block content %}
 <h2>数字分身账号</h2>
 <p class="muted">分身不是独立账号，而是「账号的 agent 化执行面」——分身身份即员工本人身份。
-冻结 = 吊销该账号全部 token（立即生效）+ IdP 停用登录；技能授权绑定写入类技能，回收后写路径立即拒绝。</p>
+本页为状态总览；点击「修改」进入账号详情页操作分身开关 / 冻结 / 档案补录 / 技能授权 / 密码重置。</p>
 {% if msg %}<p class="tag ok">{{ msg }}</p>{% endif %}
 {% if err %}<p class="tag bad">{{ err }}</p>{% endif %}
 <table>
   <thead>
     <tr>
-      <th>工号</th><th>姓名</th><th>部门</th><th>角色</th><th>直属上级</th>
+      <th>工号</th><th>姓名</th><th>部门</th><th>角色</th><th>直属上级</th><th>档案</th>
       <th>数字分身</th><th>状态</th><th>技能授权（写入类）</th><th>管理</th>
     </tr>
   </thead>
@@ -21,6 +21,14 @@
     <td>{{ a.dept }}</td>
     <td>{{ a.roles|join('、') }}</td>
     <td>{{ a.manager_name or '-' }}</td>
+    <td>
+      {% if a.profile %}
+        {% if a.profile.native_place %}<span class="tag">籍贯:{{ a.profile.native_place }}</span>{% endif %}
+        {% if a.profile.education %}<span class="tag">学历:{{ a.profile.education }}</span>{% endif %}
+        {% if a.profile.major %}<span class="tag">专业:{{ a.profile.major }}</span>{% endif %}
+        {% if a.profile.position %}<span class="tag">岗位:{{ a.profile.position }}</span>{% endif %}
+      {% else %}<span class="muted">未补录</span>{% endif %}
+    </td>
     <td>{% if a.twin_enabled %}<span class="tag ok">开启</span>{% else %}<span class="tag warn">关闭</span>{% endif %}</td>
     <td>{% if a.frozen %}<span class="tag bad">已冻结</span>{% else %}<span class="tag ok">正常</span>{% endif %}</td>
     <td>
@@ -28,36 +36,7 @@
       {% for s in a.revoked %}<span class="tag bad">回收:{{ s }}</span>{% endfor %}
       {% if not a.granted and not a.revoked %}<span class="muted">未授予写入技能</span>{% endif %}
     </td>
-    <td>
-      {% if can_admin %}
-      <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/twin">
-        <input type="hidden" name="_csrf" value="{{ csrf }}">
-        <input type="hidden" name="value" value="{{ 'false' if a.twin_enabled else 'true' }}">
-        <button>{{ '关闭分身' if a.twin_enabled else '开启分身' }}</button>
-      </form>
-      <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/freeze">
-        <input type="hidden" name="_csrf" value="{{ csrf }}">
-        <input type="hidden" name="action" value="{{ 'unfreeze' if a.frozen else 'freeze' }}">
-        <button class="danger">{{ '解冻' if a.frozen else '冻结' }}</button>
-      </form>
-      <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/grants">
-        <input type="hidden" name="_csrf" value="{{ csrf }}">
-        <select name="skill" required>
-          <option value="">选择技能…</option>
-          {% for s in skills %}<option value="{{ s.name }}">{{ s.title }}</option>{% endfor %}
-        </select>
-        <button name="action" value="grant">授予</button>
-        <button class="danger" name="action" value="revoke">回收</button>
-      </form>
-      <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/password">
-        <input type="hidden" name="_csrf" value="{{ csrf }}">
-        <input type="password" name="password" minlength="8" placeholder="新密码≥8位" required style="width:110px">
-        <button>重置密码</button>
-      </form>
-      {% else %}
-      <span class="muted">只读</span>
-      {% endif %}
-    </td>
+    <td><a class="btn" href="/admin/accounts/{{ a.emp_no }}">{{ '修改' if can_admin else '查看' }}</a></td>
   </tr>
   {% endfor %}
   </tbody>

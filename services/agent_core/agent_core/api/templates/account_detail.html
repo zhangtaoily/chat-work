@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}账号详情 {{ a.name }}（{{ a.emp_no }}） - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<p><a class="btn" href="/admin/accounts">← 返回账号列表</a></p>
+<h2>{{ a.name }}（{{ a.emp_no }}）
+  {% if a.twin_enabled %}<span class="tag ok">分身开启</span>{% else %}<span class="tag warn">分身关闭</span>{% endif %}
+  {% if a.frozen %}<span class="tag bad">已冻结</span>{% else %}<span class="tag ok">正常</span>{% endif %}
+</h2>
+{% if msg %}<p class="tag ok">{{ msg }}</p>{% endif %}
+{% if err %}<p class="tag bad">{{ err }}</p>{% endif %}
+
+<div class="card">
+  <b>基本信息</b>
+  <table>
+    <tr><th>工号</th><td>{{ a.emp_no }}</td><th>姓名</th><td>{{ a.name }}</td></tr>
+    <tr><th>部门</th><td>{{ a.dept }}</td><th>直属上级</th><td>{{ a.manager_name or '-' }}</td></tr>
+    <tr><th>角色</th><td colspan="3">{{ a.roles|join('、') }}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <b>账号档案（籍贯 / 学历 / 专业 / 岗位）</b>
+  {% if can_admin %}
+  <form method="post" action="/admin/accounts/{{ a.emp_no }}/profile">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <p>籍贯 <input name="native_place" value="{{ a.profile.native_place or '' }}">
+       学历 <input name="education" value="{{ a.profile.education or '' }}">
+       专业 <input name="major" value="{{ a.profile.major or '' }}">
+       岗位 <input name="position" value="{{ a.profile.position or '' }}">
+       <button class="pri">保存档案</button></p>
+    <p class="muted">留空=清除该字段；全部留空提交则清空档案。P2 切 hr_sync 后由 HR 主数据权威覆盖。</p>
+  </form>
+  {% else %}
+  <p>
+    {% if a.profile %}
+      {% if a.profile.native_place %}<span class="tag">籍贯:{{ a.profile.native_place }}</span>{% endif %}
+      {% if a.profile.education %}<span class="tag">学历:{{ a.profile.education }}</span>{% endif %}
+      {% if a.profile.major %}<span class="tag">专业:{{ a.profile.major }}</span>{% endif %}
+      {% if a.profile.position %}<span class="tag">岗位:{{ a.profile.position }}</span>{% endif %}
+    {% else %}<span class="muted">未补录</span>{% endif %}
+  </p>
+  <p class="muted">只读：如需变更档案请联系组织管理员。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <b>技能授权（写入类）</b>
+  <p>
+    {% for s in granted %}<span class="tag">{{ s }}</span>{% endfor %}
+    {% for s in revoked %}<span class="tag bad">回收:{{ s }}</span>{% endfor %}
+    {% if not granted and not revoked %}<span class="muted">未授予写入技能</span>{% endif %}
+  </p>
+  {% if can_admin %}
+  <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/grants">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <select name="skill" required>
+      <option value="">选择写入类技能…</option>
+      {% for s in skills %}<option value="{{ s.name }}">{{ s.title }}</option>{% endfor %}
+    </select>
+    <button name="action" value="grant">授予</button>
+    <button class="danger" name="action" value="revoke">回收</button>
+  </form>
+  <p class="muted">回收后该账号此写技能立即拒绝（deny 语义）；审计留痕见审计日志。</p>
+  {% else %}
+  <p class="muted">只读：如需授权变更请联系组织管理员。</p>
+  {% endif %}
+</div>
+
+{% if can_admin %}
+<div class="card">
+  <b>分身与状态</b>
+  <p class="muted">关闭分身仅影响 @数字人可达性（P1 委托会话），不影响本人使用；
+  冻结 = 吊销该账号全部 token（立即 401）+ IdP 停用登录，解冻反向联动。</p>
+  <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/twin">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input type="hidden" name="value" value="{{ 'false' if a.twin_enabled else 'true' }}">
+    <button>{{ '关闭分身' if a.twin_enabled else '开启分身' }}</button>
+  </form>
+  <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/freeze">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="{{ 'unfreeze' if a.frozen else 'freeze' }}">
+    <button class="danger">{{ '解冻' if a.frozen else '冻结' }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <b>密码重置（IdP 联动）</b>
+  <form class="inline" method="post" action="/admin/accounts/{{ a.emp_no }}/password">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <input type="password" name="password" minlength="8" placeholder="新密码（至少 8 位）" required>
+    <button>重置密码</button>
+  </form>
+  <p class="muted">调用 IdP 内部端点重置登录密码；明文不落审计。</p>
+</div>
+{% endif %}
+{% endblock %}

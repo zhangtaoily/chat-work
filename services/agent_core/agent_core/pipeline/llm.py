@@ -196,12 +196,17 @@ def _twin_system_prompt(twin_name: str, twin_emp_no: str) -> str:
         "（普通对话两三句以内；被问能力清单时可分点列举）。"
         f"可代为确认「{twin_name}」已公开的工作安排与一般事务性信息；"
         "不得替本人做出审批、承诺、确认订单等有约束力的意思表示；"
-        "不得透露其他员工的数据或本人未公开的信息，也不得虚构系统能力："
+        "不得透露其他员工的数据或本人未公开的信息（下方注入的公开档案"
+        "视同本人已公开信息），也不得虚构系统能力："
         "能力只以下方注入的实际授权清单为准，清单里没有的就如实说明"
         "并建议对方通过布置任务单跟进（如：@"
         f"{twin_name} 周五前完成××）；不要使用「需本人确认」"
         "这类没有系统支撑的说法。"
     )
+
+
+# 档案字段 → 对话用中文名（与 accounts store 白名单一一对应）
+_PROFILE_LABELS = {"native_place": "籍贯", "education": "学历", "major": "专业", "position": "岗位"}
 
 
 async def _complete(system_prompt: str, message: str, user_id: str | None) -> str | None:
@@ -248,12 +253,17 @@ async def twin_chat(
     twin_emp_no: str,
     user_id: str | None = None,
     capabilities: list[str] | None = None,
+    profile: dict[str, str] | None = None,
 ) -> str | None:
     """@分身自由对话（P1-2.1）：以被@者数字分身人设代答。
 
     capabilities（P1-2.1 能力上下文）：分身在系统中的真实可代为能力清单
     （graph 层按 grant/registry 口径计算），注入 prompt 使「你有什么技能」
     类问题有据可答，不再空泛回复「需本人确认」。
+    profile（账号档案上下文）：管理后台已补录的公开档案（籍贯/学历/专业/
+    岗位，accounts store 白名单，org_admin 维护），使「你是哪里人」类
+    问题有据可答——只依据已补录事实回答；未补录字段如实说明「未记录」，
+    不得以「未授权公开」拒答。
     None 语义同 chat()：调用方回落分身固定文案（format 节点）。
     """
     prompt = _twin_system_prompt(twin_name, twin_emp_no)
@@ -264,5 +274,17 @@ async def twin_chat(
             f"类问题时只能从这个清单引用，不得自行扩大）：\n{lines}\n"
             "列举时也要以「我是…的数字分身」开头；清单为空就说明目前没有"
             "可代办事项，直接引导对方布置任务单。"
+        )
+    if profile:
+        lines = "\n".join(
+            f"- {label}：{profile[key]}"
+            for key, label in _PROFILE_LABELS.items()
+            if profile.get(key)
+        )
+        prompt += (
+            "\n以下是本人在系统中已补录的公开档案（回答籍贯/学历/专业/岗位"
+            f"类问题时只能依据以下事实）：\n{lines}\n"
+            "档案中没有的字段就如实说明「档案中未记录」，不要用"
+            "「未授权公开」这类说法拒答。"
         )
     return await _complete(prompt, message, user_id)
