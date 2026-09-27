@@ -699,11 +699,20 @@ async def skills_marketplace(
 
     默认仅 published；dept_manager/security_reviewer 可带
     include_unpublished=true 查看未上架技能（评审工作台数据源）。
+    部门可见性隔离：普通视角仅 official（通用）+ 本科室 dept 技能 +
+    本人 personal 技能；评审视角（include_unpublished=true）全量豁免——
+    评审员须能见他科室提交的在评技能。
     """
     auth = _market_auth(await _authenticate_or_401(request))
     if include_unpublished and not ({"dept_manager", "security_reviewer"} & set(auth.roles)):
         raise HTTPException(status_code=403, detail="未上架技能仅限管理员查看")
     items = store.list_meta(category=category, q=q, include_unpublished=include_unpublished)
+    if not include_unpublished:
+        items = [
+            m
+            for m in items
+            if store.is_visible_to(m, user_id=auth.user_id, dept=auth.dept)
+        ]
     return {"items": items, "count": len(items)}
 
 
@@ -739,11 +748,15 @@ async def register_skill(req: SkillRegisterRequest, request: Request) -> dict[st
 
 @app.get("/skills/{name}")
 async def skill_detail(name: str, request: Request) -> dict[str, Any]:
-    """技能详情（PRD 3.4）：市场元数据 + 运行时定义合并展示。"""
-    _market_auth(await _authenticate_or_401(request))
+    """技能详情（PRD 3.4）：市场元数据 + 运行时定义合并展示。
+
+    可见性同广场口径（部门隔离）：不可见他科室专属/他人个人技能时 404，
+    不向未授权者泄露技能存在性。
+    """
+    auth = _market_auth(await _authenticate_or_401(request))
     meta = store.detail(name)
-    if meta is None:
-        raise HTTPException(status_code=404, detail=f"技能 {name} 未注册")
+    if meta is None or not store.is_visible_to(meta, user_id=auth.user_id, dept=auth.dept):
+        raise HTTPException(status_code=404, detail=f"技能 {name} 不存在或不可见")
     item = {**meta}
     skill = get_skill(name)
     if skill is not None:
@@ -772,6 +785,8 @@ async def install_skill(name: str, request: Request) -> dict[str, Any]:
             status_code=403,
             detail=f"暂无「{scope}」的数据权限（当前科室：{auth.dept or '未设置'}），请联系管理员开通。",
         )
+    if meta.get("category") == "personal" and meta.get("submitted_by") != auth.user_id:
+        raise HTTPException(status_code=403, detail="个人技能仅本人可用")
     await store.install(name, user_id=auth.user_id)
     return {"status": "ok", "skill": name, "installed": True}
 

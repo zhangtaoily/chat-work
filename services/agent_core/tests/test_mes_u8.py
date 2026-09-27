@@ -24,6 +24,19 @@ AUTH: dict[str, Any] = {
     "roles": ["employee"],
     "perm_ver": 17,
 }
+# 归属科室身份（P1-2.4 部门可见性）：生产/财务技能已限本科室，测试身份对齐
+AUTH_PROD: dict[str, Any] = {
+    "user_id": "E2002",  # 冯刚（生产科）
+    "dept": "事业部A/生产科",
+    "roles": ["employee"],
+    "perm_ver": 17,
+}
+AUTH_FIN: dict[str, Any] = {
+    "user_id": "E9001",  # 财务科（种子目录暂无账号，P2 HR 同步预留口径）
+    "dept": "事业部A/财务科",
+    "roles": ["employee"],
+    "perm_ver": 17,
+}
 
 # 与 mcp_mes mock 对齐的工单/报工样本（断言渲染文案）
 _WORK_ORDERS: list[dict[str, Any]] = [
@@ -122,14 +135,15 @@ def _clean_audit() -> Any:
     asyncio.run(audit.clear())
 
 
-async def _run(message: str, session: str) -> dict[str, Any]:
+async def _run(message: str, session: str, auth: dict[str, Any] | None = None) -> dict[str, Any]:
+    a = auth or AUTH
     graph = build_graph().compile()
     return await graph.ainvoke(
         {
-            "user_id": AUTH["user_id"],
+            "user_id": a["user_id"],
             "session_id": session,
             "message": message,
-            "auth": AUTH,
+            "auth": a,
         }
     )
 
@@ -143,7 +157,7 @@ async def test_pipeline_mes_work_orders() -> None:
         return _WORK_ORDERS
 
     with patch("agent_core.pipeline.graph.call_mes_tool", side_effect=_spy):
-        final = await _run("看下工单进度", "s-mes-wo")
+        final = await _run("看下工单进度", "s-mes-wo", auth=AUTH_PROD)
 
     text = final["final"]["text"]
     assert "MO20260902002 商品 A" in text and "生产中" in text
@@ -162,7 +176,7 @@ async def test_pipeline_mes_work_orders_sku_filter() -> None:
         return _SKU_A_ORDERS
 
     with patch("agent_core.pipeline.graph.call_mes_tool", side_effect=_spy):
-        final = await _run("看下 SKU-A 的工单进度", "s-mes-wo-sku")
+        final = await _run("看下 SKU-A 的工单进度", "s-mes-wo-sku", auth=AUTH_PROD)
 
     text = final["final"]["text"]
     assert "MO20260902002" in text
@@ -179,7 +193,7 @@ async def test_pipeline_mes_production_reports_by_order() -> None:
         return _PRODUCTION_REPORTS
 
     with patch("agent_core.pipeline.graph.call_mes_tool", side_effect=_spy):
-        final = await _run("MO20260902002 的报工记录", "s-mes-report")
+        final = await _run("MO20260902002 的报工记录", "s-mes-report", auth=AUTH_PROD)
 
     text = final["final"]["text"]
     assert "王强" in text and "李敏" in text and "PR20260920001" in text
@@ -201,7 +215,7 @@ async def test_pipeline_u8_gl_balance_default_period() -> None:
         return _GL_BALANCE
 
     with patch("agent_core.pipeline.graph.call_u8_tool", side_effect=_spy):
-        final = await _run("看下本月总账", "s-u8-gl")
+        final = await _run("看下本月总账", "s-u8-gl", auth=AUTH_FIN)
 
     text = final["final"]["text"]
     assert "银行存款" in text and "U8 只读" in text
@@ -222,7 +236,7 @@ async def test_pipeline_u8_gl_balance_subject_and_period() -> None:
         return _GL_BALANCE
 
     with patch("agent_core.pipeline.graph.call_u8_tool", side_effect=_spy):
-        final = await _run("看下 2026-08 应收的科目余额", "s-u8-gl-subject")
+        final = await _run("看下 2026-08 应收的科目余额", "s-u8-gl-subject", auth=AUTH_FIN)
 
     text = final["final"]["text"]
     assert "应收账款" in text
@@ -244,7 +258,7 @@ async def test_pipeline_u8_voucher_detail() -> None:
         return _VOUCHER_DETAIL
 
     with patch("agent_core.pipeline.graph.call_u8_tool", side_effect=_spy):
-        final = await _run("U8 查一下记-2026090128的明细", "s-u8-voucher")
+        final = await _run("U8 查一下记-2026090128的明细", "s-u8-voucher", auth=AUTH_FIN)
 
     text = final["final"]["text"]
     assert "记-2026090128" in text and "收到客户货款" in text

@@ -109,6 +109,26 @@ def reset() -> None:
     _ensure()
 
 
+def _sync_builtin_baseline() -> None:
+    """内置基线同步（registry 为 SSOT，restore 时调用）：快照只保留
+    生命周期状态（status/评审/统计/授权），基线字段（title/rw/version/
+    category/dept_scope）以最新代码为准——归类修正、新增内置技能不被
+    旧快照吞；管理员 set_scope 的显式覆盖打 scope_overridden 标记豁免
+    （重启后尊重管理员的归类）。动态注册技能（非 registry 内置）不动。"""
+    from agent_core.skills.registry import SKILLS
+
+    for name, skill in SKILLS.items():
+        meta = _meta.get(name)
+        if meta is None:  # 新版本新增内置技能：快照早于该技能，按基线补入
+            _meta[name] = _builtin_meta(name, skill)
+            continue
+        if meta.get("scope_overridden"):
+            continue
+        baseline = _builtin_meta(name, skill)
+        for field in ("title", "rw", "version", "category", "dept_scope"):
+            meta[field] = baseline[field]
+
+
 # ---- 查询（registry.match_skill 同步消费，必须无 IO）----
 
 
@@ -151,6 +171,23 @@ def detail(name: str) -> dict[str, Any] | None:
     return dict(meta) if meta else None
 
 
+def is_visible_to(meta: dict[str, Any], *, user_id: str, dept: str) -> bool:
+    """市场可见性（部门隔离，PRD 3.4）：official 全员 / dept 本科室 /
+    personal 仅本人。
+
+    dept 口径与 install 端点、permissions.check_dept_scope 一致（auth.dept
+    尾段匹配 dept_scope，如「事业部A/销售科」→「销售科」）。评审视角豁免
+    （include_unpublished 的管理员门禁）在 API 层按角色处理，与本函数正交。
+    """
+    category = meta.get("category")
+    if category == "dept":
+        scope = meta.get("dept_scope")
+        return bool(dept) and dept.split("/")[-1] == scope
+    if category == "personal":
+        return meta.get("submitted_by") == user_id
+    return category == "official"
+
+
 # ---- 生命周期（写路径，async 以落 Redis 快照）----
 
 
@@ -181,8 +218,9 @@ async def restore() -> None:
         snap = await persist.read_json(_SNAPSHOT_KEY)
     if snap:
         _meta.update(snap.get("meta", {}))
-        for m in _meta.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
+        for m in _meta.values():  # 旧快照字段兜底（approvals/scope_overridden 引入前）
             m.setdefault("approvals", [])
+            m.setdefault("scope_overridden", False)
         if "grants" in snap:  # 新格式：带授权元数据
             for u, grants in snap.get("grants", {}).items():
                 _grants[u] = {s: dict(g) for s, g in grants.items()}
@@ -192,6 +230,7 @@ async def restore() -> None:
         _revoked.update({u: set(v) for u, v in snap.get("revoked", {}).items()})
         global _seq
         _seq = int(snap.get("seq", 0))
+        _sync_builtin_baseline()  # 快照优先，但基线字段以 registry 最新代码为准
         return
     _ensure()
 
@@ -379,6 +418,48 @@ async def deprecate(name: str, *, by: str, note: str = "") -> dict[str, Any]:
         user_id=by or None,
         result="ok",
         detail=f"下架技能「{meta['title']}」{('：' + note) if note else ''}",
+    )
+    await _snapshot()
+    return dict(meta)
+
+
+async def set_scope(
+    name: str, *, category: str, dept_scope: str | None = None, by: str = ""
+) -> dict[str, Any]:
+    """管理后台归类覆盖（PRD 3.4 部门可见性）：通用 ↔ 专属切换。
+
+    - official（通用）：全员可见，dept_scope 强制清空
+    - dept（专属）：必须指定归属科室，他科室用户不可见（market/detail/install 同口径）
+    - personal 不支持切换（个人快捷技能语义固定）
+    覆盖后随快照持久化，与注册技能同生命周期；scope_overridden 标记
+    使重启恢复时豁免内置基线同步（registry 归类升级不冲掉管理员设置）。
+    """
+    _ensure()
+    meta = _meta.get(name)
+    if meta is None:
+        raise ValueError(f"技能 {name} 未注册")
+    if meta["category"] == "personal":
+        raise ValueError("个人快捷技能不支持归类切换")
+    if category == "official":
+        dept_scope = None
+    elif category == "dept":
+        if not dept_scope or not dept_scope.strip():
+            raise ValueError("专属技能必须指定归属科室（dept_scope）")
+        dept_scope = dept_scope.strip()
+    else:
+        raise ValueError("归类仅支持 official（通用）/dept（专属）")
+    before = f"{meta['category']}（{meta.get('dept_scope') or '通用'}）"
+    meta["category"] = category
+    meta["dept_scope"] = dept_scope
+    meta["scope_overridden"] = True  # 显式覆盖豁免基线同步（restore 不再以 registry 为准）
+    await audit.record(
+        "skill_scope",
+        tool="skill_store",
+        params={"skill": name, "category": category, "dept_scope": dept_scope},
+        user_id=by or None,
+        result="ok",
+        detail=f"技能「{meta['title']}」归类调整：{before} → "
+        f"{category}（{dept_scope or '通用'}）",
     )
     await _snapshot()
     return dict(meta)

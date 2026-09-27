@@ -157,6 +157,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "title": "客户 360 视图",
         "rw": "read",
         "mode": "ask",
+        "dept_scope": "销售科",  # 部门可见性隔离（PRD 3.4）：客户数据仅销售科
         "intent_patterns": ["客户360", "客户信息", "客户档案", "客户视图", "查客户"],
         "read_tools": ["crm__search_customers", "crm__get_customer_360"],
         "write_tool": None,
@@ -171,6 +172,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "title": "订单跟单进度",
         "rw": "read",
         "mode": "ask",
+        "dept_scope": "销售科",  # 部门可见性隔离（PRD 3.4）：订单数据仅销售科
         "intent_patterns": ["跟单", "订单进度", "订单到哪了", "发货进度", "交期"],
         "read_tools": ["crm__query_order_progress"],
         "write_tool": None,
@@ -209,6 +211,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "title": "财务凭证摘要",
         "rw": "read",
         "mode": "ask",
+        "dept_scope": "财务科",  # 部门可见性隔离（PRD 3.4）：财务数据仅财务科
         "intent_patterns": ["凭证", "记账", "借贷", "账务"],
         "read_tools": ["erp__query_voucher_summary"],
         "write_tool": None,
@@ -341,6 +344,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "title": "生产报工查询",
         "rw": "read",
         "mode": "ask",
+        "dept_scope": "生产科",  # 部门可见性隔离（PRD 3.4）：生产数据仅生产科
         "intent_patterns": ["报工", "生产进度", "产量", "工单", "完工"],
         "read_tools": ["mes__query_work_orders", "mes__query_production_reports"],
         "write_tool": None,
@@ -353,6 +357,7 @@ SKILLS: dict[str, dict[str, Any]] = {
         "title": "U8 财务总账",
         "rw": "read",
         "mode": "ask",
+        "dept_scope": "财务科",  # 部门可见性隔离（PRD 3.4）：财务数据仅财务科
         "intent_patterns": ["总账", "科目余额", "余额表", "U8", "财务汇总"],
         "read_tools": ["u8__query_gl_balance", "u8__query_voucher_detail"],
         "write_tool": None,

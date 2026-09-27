@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}技能归类 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>技能归类管理</h2>
+<p class="muted">通用技能全员可见；专属技能仅归属科室可见——他科室在技能广场不可见（详情直访 404），
+安装端点独立再校验 403（PRD 3.4 部门可见性隔离）。个人快捷技能语义固定，不支持切换。
+归属科室支持手填（如财务科暂无目录账号，HR 同步后自动生效）。</p>
+{% if msg %}<p class="tag ok">{{ msg }}</p>{% endif %}
+{% if err %}<p class="tag bad">{{ err }}</p>{% endif %}
+<table>
+  <thead>
+    <tr>
+      <th>名称</th><th>标题</th><th>读写</th><th>归类</th><th>归属科室</th><th>状态</th>
+      {% if can_admin %}<th>切换归类</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for m in items %}
+  <tr>
+    <td>{{ m.name }}</td>
+    <td>{{ m.title }}</td>
+    <td>{{ m.rw }}</td>
+    <td>
+      {% if m.category == 'official' %}<span class="tag ok">通用</span>
+      {%- elif m.category == 'dept' %}<span class="tag">专属</span>
+      {%- else %}<span class="tag warn">个人</span>{% endif %}
+    </td>
+    <td>{{ m.dept_scope or '-' }}</td>
+    <td>{{ m.status }}</td>
+    {% if can_admin %}
+    <td>
+      {% if m.category == 'personal' %}
+        <span class="muted">个人技能不支持切换</span>
+      {% else %}
+      <form method="post" action="/admin/skills/{{ m.name }}/scope" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <select name="category">
+          <option value="official"{% if m.category == 'official' %} selected{% endif %}>通用</option>
+          <option value="dept"{% if m.category == 'dept' %} selected{% endif %}>专属</option>
+        </select>
+        <input list="dept-options" name="dept_scope" value="{{ m.dept_scope or '' }}"
+               placeholder="归属科室" style="width:9em;">
+        <button type="submit" class="btn">保存</button>
+      </form>
+      {% endif %}
+    </td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<datalist id="dept-options">
+  {% for d in depts %}<option value="{{ d }}"></option>{% endfor %}
+</datalist>
+{% endblock %}

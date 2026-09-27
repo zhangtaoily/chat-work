@@ -987,3 +987,70 @@ async def account_profile(request: Request, emp_no: str) -> RedirectResponse | H
         msg=f"已保存 {emp_no} 档案（{len(saved)} 项）" if saved else f"已清空 {emp_no} 档案",
     )
 
+
+# ---- 工作台 7：技能归类管理（P1-2.4 部门可见性：org_admin 编辑 / system_admin 只读） ----
+#
+# 通用/专属分类不再只靠内置基线：本页把任一技能在「通用（official，全员
+# 可见）↔ 专属（dept，仅归属科室可见）」间切换。防越权口径与广场过滤
+# 完全一致（PRD 3.4）：他科室专属技能不可见（详情直访 404），安装再校验。
+
+_SKILL_SCOPE_ADMINS = {"org_admin"}
+_SKILL_SCOPE_VIEWERS = {"org_admin", "system_admin"}
+
+
+@router.get("/skills", response_model=None)
+async def skills_scope_page(
+    request: Request, msg: str = "", err: str = ""
+) -> RedirectResponse | HTMLResponse:
+    """技能归类管理：全量技能（含未上架）+ 当前归类 + 归属科室 + 切换表单。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/skills")
+    if bad := _gate(request, sess, _SKILL_SCOPE_VIEWERS):
+        return bad
+    from agent_core.accounts import store as accounts_store
+    from agent_core.skills import store as skill_store
+
+    items = skill_store.list_meta(include_unpublished=True)
+    # 科室建议清单：组织目录科室 ∪ 既有归属科室（如财务科不在目录但已有专属技能）
+    known = {m.get("dept_scope") for m in items if m.get("dept_scope")}
+    known |= {a["dept"].split("/")[-1] for a in accounts_store.list_accounts()}
+    return _templates.TemplateResponse(
+        request,
+        "skills_admin.html",
+        page_ctx(
+            sess,
+            nav="skills",
+            items=items,
+            depts=sorted(known),
+            can_admin=bool(_SKILL_SCOPE_ADMINS & set(sess["roles"])),
+            msg=msg,
+            err=err,
+        ),
+    )
+
+
+@router.post("/skills/{name}/scope", response_model=None)
+async def skill_scope_update(request: Request, name: str) -> RedirectResponse:
+    """归类切换：official 强制清空归属科室；dept 必填科室（空则拒绝）。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/skills")
+    if bad := _gate(request, sess, _SKILL_SCOPE_ADMINS):
+        return bad
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/skills", err="CSRF 校验失败，操作被拒绝")
+    from agent_core.skills import store as skill_store
+
+    category = str(form.get("category", ""))
+    dept_scope = str(form.get("dept_scope", "") or "").strip()
+    try:
+        meta = await skill_store.set_scope(
+            name, category=category, dept_scope=dept_scope or None, by=sess["user_id"]
+        )
+    except ValueError as exc:
+        return _back("/admin/skills", err=str(exc))
+    label = "通用" if category == "official" else f"专属（{meta['dept_scope']}）"
+    return _back("/admin/skills", msg=f"技能「{meta['title']}」归类已调整为 {label}")
+
