@@ -13,6 +13,7 @@ dependencies = [
     "sqlalchemy>=2",
     "aiomysql>=0.2", # MySQL 8 优先（v1.6）；兼容 PG 时切 psycopg，ORM 模型不变
     "psycopg[binary]>=3.2",
+    "pyjwt>=2.14.0",
 ]
 
 [dependency-groups]

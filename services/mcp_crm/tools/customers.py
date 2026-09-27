@@ -13,6 +13,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+import xauth
 from adapters.crm_client import get_adapter
 
 
@@ -28,6 +29,7 @@ def register(mcp: FastMCP) -> None:
             keyword: 客户名称关键词（如 "XX"），必须命中客户库
             limit: 最多返回条数（1-50，默认 10）
         """
+        await xauth.guard()  # 有 token 必须有效（只读，无 user 范围参数）
         kw = keyword.strip()
         if not kw:
             raise ValueError("搜索关键词必填（不提供默认值）")
@@ -41,6 +43,7 @@ def register(mcp: FastMCP) -> None:
         Args:
             customer_id: 客户编码（来自 crm__search_customers 命中结果）
         """
+        await xauth.guard()  # 有 token 必须有效（只读，无 user 范围参数）
         if not customer_id.strip():
             raise ValueError("customer_id 必填（来自 crm__search_customers 命中结果）")
         return await adapter.get_customer_360(customer_id.strip())

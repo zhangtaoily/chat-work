@@ -53,6 +53,23 @@ def check_skill_roles(
     return f"该操作需要 {'、'.join(required)} 权限，请联系管理员开通。"
 
 
+def check_skill_grant(
+    auth: dict[str, Any] | None, skill: dict[str, Any]
+) -> str | None:
+    """技能授权校验（P0-2「技能↔数字分身账号」绑定，deny 语义）。
+
+    授权模型：安装/授予即授权、默认放行；管理员回收（revoke）后，
+    该账号对此写技能立即拒绝。auth 缺省（本地冒烟）放行。
+    """
+    if auth is None:
+        return None
+    from agent_core.skills import store as skill_store
+
+    if skill_store.is_revoked(str(auth.get("user_id") or ""), skill["name"]):
+        return "该操作尚未对你开放，请联系管理员开通。"
+    return None
+
+
 def check_region_scope(
     auth: dict[str, Any] | None, query: str
 ) -> str | None:

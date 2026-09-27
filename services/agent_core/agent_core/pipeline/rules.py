@@ -589,6 +589,104 @@ def extract_reminder_content(message: str) -> str | None:
     return None
 
 
+# ---- P1-2 @分身委托会话：布置任务抽取 ----
+
+# @提及：工号（@E1002）或中文姓名（@李四，2-4 字）
+_MENTION_EMP_RE = re.compile(r"@([A-Za-z]\d{3,6})")
+_MENTION_NAME_RE = re.compile(r"@([\u4e00-\u9fa5]{2,4})")
+
+# 截止短语（受控词表，必选命中避免误伤「之前」类普通句式）：
+# 今天/明天/后天/大后天/本周五/下周一/周五/N月N日/N日(号)/月底/周末 + 「前」
+_DEADLINE_RE = re.compile(
+    r"(今天|明天|后天|大后天|本周[一二三四五六日天]?|这周[一二三四五六日天]?"
+    r"|下周[一二三四五六日天]?|下下周[一二三四五六日天]?|周[一二三四五六日天]"
+    r"|[0-9]{1,2}月[0-9]{1,2}[日号]|[0-9]{1,2}[日号]|本月底|月底|周末)前"
+)
+
+# 布置引导词（正文头剥离）：请/麻烦/帮忙/辛苦/让/给 等礼貌前缀 +
+# 「布置/安排/交办 + (一个/一项) + 任务/工作」纯意图短语（无实际内容时不作正文）
+_ASSIGN_LEAD_RE = re.compile(
+    r"^(?:(?:请|麻烦|帮忙|辛苦|劳驾|帮我|让|给)+(?:他|她|它)?(?:的?(?:数字)?分身)?(?:去|来)?"
+    r"|(?:布置|安排|交办)(?:一个|一项)?(?:任务|工作)?)"
+)
+
+
+def extract_mention(message: str) -> str | None:
+    """@提及抽取（P1-2）：返回 @ 后的工号或姓名 token，未命中 None。
+
+    工号优先（@E1002），避免中文姓名被工号段误吞；解析为 emp_no 由
+    accounts.resolve_mention 完成（规则层不依赖账号目录）。
+    """
+    m = _MENTION_EMP_RE.search(message)
+    if m:
+        return m.group(1)
+    m = _MENTION_NAME_RE.search(message)
+    if m:
+        return m.group(1)
+    return None
+
+
+def extract_deadline(message: str) -> str | None:
+    """截止短语抽取（P1-2 可选字段）：「周五前」「10月8日前」等，返回原文。
+
+    v1 不做日期归一（任务单展示原样；到点提醒联动属 P2 自动化范畴）。
+    """
+    m = _DEADLINE_RE.search(message)
+    return f"{m.group(1)}前" if m else None
+
+
+def extract_assign_content(message: str, mention: str | None = None) -> str | None:
+    """布置正文抽取：剥离 @提及、截止短语与引导词后的剩余文本。
+
+    未命中返回 None（走补问：「请问要布置什么工作内容？」）。
+    """
+    text = message
+    if mention:
+        text = text.replace(f"@{mention}", " ", 1)
+    deadline = extract_deadline(text)
+    if deadline:
+        text = text.replace(deadline, " ", 1)
+    text = text.strip("，。,、：: 　")
+    if not text:
+        return None
+    for _ in range(3):  # 引导词可叠用（如「请麻烦」），最多剥三层
+        stripped = _ASSIGN_LEAD_RE.sub("", text, count=1)
+        if stripped == text:
+            break
+        text = stripped.lstrip("，。,、：: 　")
+    text = text.strip("。.！!？? 　")
+    return text or None
+
+
+# ---- P1-2 任务状态推进：任务号 + 目标状态抽取 ----
+
+# 任务单号：ASSIGN-0001 形式（大小写不敏感，归一为大写）
+_TASK_ID_RE = re.compile(r"ASSIGN-\d{3,4}", re.IGNORECASE)
+
+# 状态归一词表（按序匹配，done 优先于其他词避免「取消因为已完成」歧义场景）：
+# 完成/做完/搞定 → done；进行中/开始/开工 → in_progress；取消/撤销 → cancelled
+_TASK_STATUS_WORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("完成", "做完", "搞定"), "done"),
+    (("进行中", "开始", "开工"), "in_progress"),
+    (("取消", "撤销"), "cancelled"),
+)
+
+
+def extract_task_id(message: str) -> str | None:
+    """任务单号抽取（P1-2 状态推进）：返回 ASSIGN-XXXX 大写形式，未命中 None。"""
+    m = _TASK_ID_RE.search(message)
+    return m.group(0).upper() if m else None
+
+
+def extract_task_status(message: str) -> str | None:
+    """目标状态归一（P1-2 状态推进）：完成→done / 进行中→in_progress /
+    取消→cancelled；未命中 None（走补问）。"""
+    for words, status in _TASK_STATUS_WORDS:
+        if any(w in message for w in words):
+            return status
+    return None
+
+
 def extract_customer_keyword(message: str, allow_bare: bool = True) -> str | None:
     """抽取客户名称关键词（CRM 模糊匹配输入，PRD 6.1.1）。
 

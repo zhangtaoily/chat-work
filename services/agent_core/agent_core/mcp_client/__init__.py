@@ -9,6 +9,7 @@ audit contextvar（API 入口 set_actor 注入），未注入（直连图测试/
 本地冒烟）时 user_id 为 None。
 """
 
+import contextvars
 import json
 import time
 from typing import Any
@@ -17,6 +18,17 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 from agent_core import audit
+
+# 当前请求的用户 JWT（P1-1 X-Chat-Auth 透传：API 入口 set_caller_token 注入，
+# call_mcp_tool 读出后随每次 MCP 连接发给 mcp_*，服务端持公钥自行验签）。
+_caller_token: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "mcp_caller_token", default=None
+)
+
+
+def set_caller_token(token: str | None) -> None:
+    """设置当前请求的用户 JWT（鉴权通过后调用；None = 未登录/本地冒烟）。"""
+    _caller_token.set(token)
 
 
 class McpToolError(RuntimeError):
@@ -30,8 +42,11 @@ async def call_mcp_tool(url: str, tool_name: str, arguments: dict[str, Any]) -> 
     error: McpToolError | None = None
     result: Any = None
     started = time.perf_counter()
+    # X-Chat-Auth 透传（P1-1）：有用户 JWT 则随连接下发，mcp_* 侧自行验签
+    token = _caller_token.get()
+    headers = {"X-Chat-Auth": token} if token else None
     async with (
-        streamablehttp_client(url) as (read, write, _),
+        streamablehttp_client(url, headers=headers) as (read, write, _),
         ClientSession(read, write) as session,
     ):
         await session.initialize()

@@ -18,6 +18,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 import idempotency
+import xauth
 from adapters.crm_client import ORDER_TYPES, PAYMENT_TERMS, calc_amount, get_adapter
 
 
@@ -145,6 +146,7 @@ def register(mcp: FastMCP) -> None:
             payment_term: 付款方式（prepay=预付 / net30=月结 30 天 / net60=月结 60 天）
             idempotency_key: 幂等键 {userId}_{sessionId}_{intentHash}_{draftVersion}
         """
+        await xauth.guard(user_id)
         return await submit_sales_order(
             user_id=user_id,
             order_type=order_type,
@@ -166,4 +168,5 @@ def register(mcp: FastMCP) -> None:
         """
         if not order_no.strip():
             raise ValueError("订单号必填")
+        await xauth.guard()  # 有 token 必须有效（只读，无 user 范围参数）
         return await get_adapter().query_order_progress(order_no.strip())

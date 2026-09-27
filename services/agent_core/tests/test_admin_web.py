@@ -27,6 +27,7 @@ from agent_core.api import admin as admin_mod
 from agent_core.api import auth as auth_mod
 from agent_core.api.auth import AuthContext
 from agent_core.api.main import app
+from agent_core.assignments import store as assignments_store
 from agent_core.automation import store as auto_store
 from agent_core.knowledge import store as knowledge_store
 from agent_core.skills import store as skill_store
@@ -68,9 +69,11 @@ def _reset_state() -> Iterator[None]:
     knowledge_store.reset()
     auto_store.stop_scheduler()
     automation.reset()
+    assignments_store.reset()
     asyncio.run(audit.clear())
     yield
     auto_store.stop_scheduler()
+    assignments_store.reset()
     asyncio.run(audit.clear())
 
 
@@ -272,6 +275,57 @@ def test_automation_pause_resume_via_web(client: TestClient) -> None:
     r = post(client, f"/admin/automation/{task['id']}/status", {"action": "resume", "_csrf": s["csrf"]})
     assert "已恢复" in unquote(r.headers["location"])
     assert automation.list_tasks()[0]["status"] == "active"
+
+
+# ---- 工作台 3.5：任务单治理（查看 + 治理取消，归属校验放宽为管理角色）----
+
+
+def test_assignments_page_lists_and_filters(client: TestClient) -> None:
+    t = asyncio.run(assignments_store.create("E1003", "E1001", "完成CRM测试", deadline="周五前"))
+    t2 = asyncio.run(assignments_store.create("E1003", "E1001", "准备验收材料"))
+    asyncio.run(assignments_store.update_status(t2["id"], "done", by="E1001"))
+    login_as(client, "org1", ["org_admin"])
+    r = go(client, "/admin/assignments")
+    assert r.status_code == 200
+    assert t["id"] in r.text and "完成CRM测试" in r.text
+    assert t2["id"] in r.text and t2["assignee_name"] in r.text
+    # 状态筛选：done 视图只含已完成单
+    r = go(client, "/admin/assignments?status=done")
+    assert r.status_code == 200
+    assert t2["id"] in r.text and t["id"] not in r.text
+
+
+def test_assignment_cancel_via_web(client: TestClient) -> None:
+    t = asyncio.run(assignments_store.create("E1003", "E1001", "完成对账"))
+    s = login_as(client, "sa1", ["system_admin"])
+    r = post(client, f"/admin/assignments/{t['id']}/status", {"_csrf": s["csrf"]})
+    assert "已取消" in unquote(r.headers["location"])
+    assert assignments_store.get(t["id"])["status"] == "cancelled"
+    # 终态任务单不可再取消（状态机仍约束治理动作）
+    r = post(client, f"/admin/assignments/{t['id']}/status", {"_csrf": s["csrf"]})
+    assert "不允许" in unquote(r.headers["location"])
+
+
+def test_assignment_role_and_csrf_gate(client: TestClient) -> None:
+    t = asyncio.run(assignments_store.create("E1003", "E1001", "完成季度盘点"))
+    # 查看门禁：auditor 可看，knowledge_manager 403
+    login_as(client, "aud1", ["auditor"])
+    assert go(client, "/admin/assignments").status_code == 200
+    client.cookies.clear()
+    login_as(client, "km1", ["knowledge_manager"])
+    assert go(client, "/admin/assignments").status_code == 403
+    # 操作门禁：auditor 可看但不可取消
+    client.cookies.clear()
+    s = login_as(client, "aud1", ["auditor"])
+    r = post(client, f"/admin/assignments/{t['id']}/status", {"_csrf": s["csrf"]})
+    assert r.status_code == 403
+    assert assignments_store.get(t["id"])["status"] == "pending"
+    # CSRF 伪造提交被拒且状态不变
+    client.cookies.clear()
+    login_as(client, "sa1", ["system_admin"])
+    r = post(client, f"/admin/assignments/{t['id']}/status", {"_csrf": "forged"})
+    assert "CSRF" in unquote(r.headers["location"])
+    assert assignments_store.get(t["id"])["status"] == "pending"
 
 
 # ---- 工作台 4：系统配置（开关实接线 + MCP 注册/探测打桩）----

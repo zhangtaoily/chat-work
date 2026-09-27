@@ -38,7 +38,7 @@ def resolve_config(user_id: str | None = None) -> dict[str, str] | None:
         from agent_core.syscfg import store as syscfg_store
 
         entry = syscfg_store.resolve_model(user_id)
-    except Exception:  # noqa: BLE001 — 配置域故障不阻塞对话主流程
+    except Exception:
         logger.warning("syscfg 模型解析失败，回落 env", exc_info=True)
         entry = None
     if entry is not None:
@@ -159,7 +159,7 @@ async def extract_slots(message: str, user_id: str | None = None) -> dict[str, A
         return None
     try:
         data = await _post_chat(message, user_id)
-    except Exception:  # noqa: BLE001  LLM 故障静默降级规则路径
+    except Exception:
         logger.warning("llm extract_slots 降级规则路径", exc_info=True)
         return None
     if not data:
@@ -186,18 +186,33 @@ def _chat_system_prompt() -> str:
     )
 
 
-async def chat(message: str, user_id: str | None = None) -> str | None:
-    """闲聊兜底（format 节点技能未命中轮）：由 LLM 生成自然回复。
+def _twin_system_prompt(twin_name: str, twin_emp_no: str) -> str:
+    """@分身自由对话人设（P1-2.1）：以本人分身身份代答，防越权约束写死在 prompt。"""
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    return (
+        f"当前时间：{now}。你是「{twin_name}」（工号 {twin_emp_no}）的数字分身，"
+        "正在代表本人与同事对话。无论对方问什么都必须以「"
+        f"{twin_name}的数字分身」身份开头表明身份，用中文友好地回复"
+        "（普通对话两三句以内；被问能力清单时可分点列举）。"
+        f"可代为确认「{twin_name}」已公开的工作安排与一般事务性信息；"
+        "不得替本人做出审批、承诺、确认订单等有约束力的意思表示；"
+        "不得透露其他员工的数据或本人未公开的信息，也不得虚构系统能力："
+        "能力只以下方注入的实际授权清单为准，清单里没有的就如实说明"
+        "并建议对方通过布置任务单跟进（如：@"
+        f"{twin_name} 周五前完成××）；不要使用「需本人确认」"
+        "这类没有系统支撑的说法。"
+    )
 
-    None 表示「LLM 未配置 / 调用失败 / 返回不合法」，调用方回落固定文案。
-    """
+
+async def _complete(system_prompt: str, message: str, user_id: str | None) -> str | None:
+    """OpenAI 兼容 /chat/completions 单轮调用；None = 未配置/失败/返回不合法。"""
     cfg = resolve_config(user_id)
     if cfg is None or not message.strip():
         return None
     body = {
         "model": cfg["model"],
         "messages": [
-            {"role": "system", "content": _chat_system_prompt()},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": message},
         ],
     }
@@ -211,8 +226,43 @@ async def chat(message: str, user_id: str | None = None) -> str | None:
             )
             resp.raise_for_status()
             choice = resp.json()["choices"][0]
-    except Exception:  # noqa: BLE001  LLM 故障静默降级固定文案
+    except Exception:
         logger.warning("llm chat 降级固定文案", exc_info=True)
         return None
     content = (choice.get("message") or {}).get("content")
     return content if isinstance(content, str) and content.strip() else None
+
+
+async def chat(message: str, user_id: str | None = None) -> str | None:
+    """闲聊兜底（format 节点技能未命中轮）：由 LLM 生成自然回复。
+
+    None 表示「LLM 未配置 / 调用失败 / 返回不合法」，调用方回落固定文案。
+    """
+    return await _complete(_chat_system_prompt(), message, user_id)
+
+
+async def twin_chat(
+    message: str,
+    *,
+    twin_name: str,
+    twin_emp_no: str,
+    user_id: str | None = None,
+    capabilities: list[str] | None = None,
+) -> str | None:
+    """@分身自由对话（P1-2.1）：以被@者数字分身人设代答。
+
+    capabilities（P1-2.1 能力上下文）：分身在系统中的真实可代为能力清单
+    （graph 层按 grant/registry 口径计算），注入 prompt 使「你有什么技能」
+    类问题有据可答，不再空泛回复「需本人确认」。
+    None 语义同 chat()：调用方回落分身固定文案（format 节点）。
+    """
+    prompt = _twin_system_prompt(twin_name, twin_emp_no)
+    if capabilities:
+        lines = "\n".join(f"- {c}" for c in capabilities)
+        prompt += (
+            "\n以下是你在系统中实际被授予的能力（回答「能做什么/有什么技能」"
+            f"类问题时只能从这个清单引用，不得自行扩大）：\n{lines}\n"
+            "列举时也要以「我是…的数字分身」开头；清单为空就说明目前没有"
+            "可代办事项，直接引导对方布置任务单。"
+        )
+    return await _complete(prompt, message, user_id)

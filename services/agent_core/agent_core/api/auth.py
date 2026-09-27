@@ -36,6 +36,8 @@ CLOCK_LEEWAY = 60  # 时钟偏移 ±60 秒（PRD 8.5.7）
 JWKS_TTL_SECONDS = 10 * 60
 
 _jti_blacklist: dict[str, float] = {}  # jti -> 拒绝截止时间（token exp）
+_user_deny: set[str] = set()  # 账号级停用（P0-3 冻结；解冻即移除）
+USER_DENY_TTL_SECONDS = 30 * 24 * 3600  # Redis 停用键 TTL 上限（解冻即删）
 _redis_client: Any = None
 
 
@@ -80,6 +82,34 @@ def revoke_jti(jti: str, until: float) -> None:
             )
     except RuntimeError:
         pass  # 无运行中事件循环（同步测试调用）→ 仅进程内生效
+
+
+def deny_user(user_id: str) -> None:
+    """停用账号（管理后台「冻结」动作，P0-3）：该用户全部 token 立即被拒。
+
+    进程内立即生效；Redis 可用时双写（多 worker 共享，TTL 上限见
+    USER_DENY_TTL_SECONDS），解冻走 allow_user 清除两侧标记。
+    """
+    _user_deny.add(user_id)
+    try:
+        redis = _get_redis()
+        if redis is not None:
+            asyncio.get_running_loop().create_task(
+                redis.setex(f"user:deny:{user_id}", USER_DENY_TTL_SECONDS, "1")
+            )
+    except RuntimeError:
+        pass  # 无运行中事件循环（同步测试调用）→ 仅进程内生效
+
+
+def allow_user(user_id: str) -> None:
+    """解冻账号：清除进程内与 Redis 停用标记。"""
+    _user_deny.discard(user_id)
+    try:
+        redis = _get_redis()
+        if redis is not None:
+            asyncio.get_running_loop().create_task(redis.delete(f"user:deny:{user_id}"))
+    except RuntimeError:
+        pass
 
 
 def _gc_blacklist() -> None:
@@ -177,6 +207,12 @@ async def verify_token(token: str) -> AuthContext:
 
     # user_id=工号：Keycloak sub 为 UUID，username（=工号）优先；mock 链路 sub 即工号
     user_id = str(claims.get("preferred_username") or claims["sub"])
+
+    # 账号级停用（P0-3 冻结）：jti 黑名单同款双通道，命中 → 401
+    if user_id in _user_deny:
+        raise jwt.InvalidTokenError("账号已被停用")
+    if redis is not None and await redis.exists(f"user:deny:{user_id}"):
+        raise jwt.InvalidTokenError("账号已被停用")
 
     return AuthContext(
         user_id=user_id,

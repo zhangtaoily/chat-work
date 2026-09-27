@@ -465,6 +465,69 @@ SKILLS: dict[str, dict[str, Any]] = {
         },
         "required_fields": ["remind_at", "content"],
     },
+    "twin_assign_task": {
+        "name": "twin_assign_task",
+        "title": "布置工作给数字分身",
+        "rw": "read",  # 进程内直调（不走 MCP），准入防线在 assignments store 层
+        "mode": "ask",
+        "dept_scope": None,
+        "intent_patterns": ["布置", "布置任务", "布置工作", "安排任务", "交给你", "交办", "@分身", "给分身"],
+        "read_tools": [],
+        "write_tool": None,
+        "required_roles": [],
+        "ask_messages": {
+            "assignee": "请问要布置给哪位同事？（@工号或姓名，例如 @E1002 或 @李四）",
+            "content": "请问要布置什么工作内容？",
+        },
+        "required_fields": ["assignee", "content"],
+    },
+    "twin_task_progress": {
+        "name": "twin_task_progress",
+        "title": "任务进度查询",
+        "rw": "read",
+        "mode": "ask",
+        "dept_scope": None,
+        "intent_patterns": ["任务进度", "布置的任务", "我的任务", "任务清单", "工作进度"],
+        "read_tools": [],
+        "write_tool": None,
+        "required_roles": [],
+        "ask_messages": {},
+        "required_fields": [],
+    },
+    # P1-2 任务状态推进：接收人聊天里推进任务（标记完成/进行中），
+    # 布置人可取消；进程内直调 assignments.update_status，权限在 store 层
+    "twin_task_update": {
+        "name": "twin_task_update",
+        "title": "任务状态推进",
+        "rw": "read",  # 进程内直调（不走 MCP），操作者校验在 assignments store 层
+        "mode": "ask",
+        "dept_scope": None,
+        "intent_patterns": ["标记完成", "任务完成", "完成任务", "标记进行中", "取消任务"],
+        "read_tools": [],
+        "write_tool": None,
+        "required_roles": [],
+        "ask_messages": {
+            "task_id": "请问要推进哪个任务？（任务号如 ASSIGN-0001，可先说「我的任务」查看）",
+            "status": "请问要推进到什么状态？（进行中 / 完成 / 取消）",
+        },
+        "required_fields": ["task_id", "status"],
+    },
+    # P1-2.1 @分身自由对话：不走关键词路由（intent_patterns 空），由
+    # route 节点提及兜底触发（@提及可解析 + 被者分身开启且未冻结）；
+    # 代答防越权约束在 llm.twin_chat 的分身人设 prompt
+    "twin_mention_chat": {
+        "name": "twin_mention_chat",
+        "title": "数字分身代答",
+        "rw": "read",
+        "mode": "ask",
+        "dept_scope": None,
+        "intent_patterns": [],
+        "read_tools": [],
+        "write_tool": None,
+        "required_roles": [],
+        "ask_messages": {},
+        "required_fields": [],
+    },
     "send_reminder": {
         "name": "send_reminder",
         "title": "定时提醒执行",

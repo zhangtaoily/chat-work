@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}任务单 - Chat-Work 管理后台{% endblock %}
+{% block content %}
+<h2>任务单治理 <span class="muted">（@分身布置的工作任务，PRD 组织人事域）</span></h2>
+{% if msg %}<p><span class="tag ok">{{ msg }}</span></p>{% endif %}
+{% if err %}<p><span class="tag bad">{{ err }}</span></p>{% endif %}
+<div class="card">
+  状态筛选：
+  {% for s, label in [('', '全部'), ('pending', '待开始'), ('in_progress', '进行中'), ('done', '已完成'), ('cancelled', '已取消')] %}
+  <a href="/admin/assignments{% if s %}?status={{ s }}{% endif %}" style="{{ 'font-weight:700;color:var(--accent);' if status == s else '' }}">{{ label }}</a>{% if not loop.last %} ·{% endif %}
+  {% endfor %}
+  <span class="muted">— 状态推进由接收人在聊天/端内完成，此处仅治理取消</span>
+</div>
+<table>
+  <tr><th>任务号</th><th>任务内容</th><th>布置人</th><th>接收人</th><th>截止</th><th>状态</th><th>更新时间</th><th>操作</th></tr>
+  {% for t in items %}
+  <tr>
+    <td><code>{{ t.id }}</code><br><span class="muted">{{ t.created_at }}</span></td>
+    <td><strong>{{ t.title }}</strong>{% if t.detail %}<br><span class="muted">{{ t.detail }}</span>{% endif %}{% if t.done_note %}<br><span class="muted">备注：{{ t.done_note }}</span>{% endif %}</td>
+    <td>{{ t.assigner_name }} <span class="muted">{{ t.assigner }}</span></td>
+    <td>{{ t.assignee_name }} <span class="muted">{{ t.assignee }}</span></td>
+    <td>{{ t.deadline or '-' }}</td>
+    <td>
+      {% if t.status == 'pending' %}<span class="tag warn">待开始</span>
+      {% elif t.status == 'in_progress' %}<span class="tag">进行中</span>
+      {% elif t.status == 'done' %}<span class="tag ok">已完成</span>
+      {% else %}<span class="tag bad">已取消</span>{% endif %}
+    </td>
+    <td class="muted">{{ t.updated_at }}</td>
+    <td>
+      {% if t.status in ('pending', 'in_progress') %}
+      <form class="inline" method="post" action="/admin/assignments/{{ t.id }}/status">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button class="danger">取消</button>
+      </form>
+      {% else %}<span class="muted">-</span>{% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">暂无任务单</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -17,6 +17,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 import idempotency
+import xauth
 from adapters.oa_client import LEAVE_TYPES, get_adapter
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ def register(mcp: FastMCP) -> None:
             leave_type: 可选，限定查询类型（annual/comp/sick/personal/
                 marriage/bereavement/maternity）；缺省返回全部
         """
+        await xauth.guard(user_id)
         if leave_type is not None and leave_type not in LEAVE_TYPES:
             raise ValueError(f"无效假期类型：{leave_type}，可选值 {'/'.join(LEAVE_TYPES)}")
         return await adapter.get_leave_balance(user_id, leave_type)
@@ -84,6 +86,7 @@ def register(mcp: FastMCP) -> None:
             idempotency_key: 幂等键 {userId}_{sessionId}_{intentHash}_{draftVersion}
             tx_reason: 可选，调休时长来源（0=加班/1=旅游/2=其他）；缺省服务端默认
         """
+        await xauth.guard(user_id)
         logger.info(
             "oa__submit_leave_request 入参：user_id=%s leave_type=%s start=%s end=%s "
             "days=%s tx_reason=%s idem=%s reason=%r",

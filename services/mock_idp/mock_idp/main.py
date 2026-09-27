@@ -4,15 +4,18 @@
 - GET  /health
 - GET  /realms/chat-work/.well-known/openid-configuration   # OIDC 发现
 - GET  /realms/chat-work/protocol/openid-connect/auth        # 授权端点（登录页）
-- POST /realms/chat-work/protocol/openid-connect/auth        # 工号认证 → 发授权码
+- POST /realms/chat-work/protocol/openid-connect/auth        # 工号+密码认证 → 发授权码
 - POST /realms/chat-work/protocol/openid-connect/token        # code+PKCE 换 token / refresh 轮换
 - GET  /realms/chat-work/protocol/openid-connect/certs        # JWKS（RS256 公钥）
 - POST /realms/chat-work/protocol/openid-connect/revoke       # 登出吊销（refresh token）
+- POST /internal/users/{emp_no}/password                      # 内网管理：重置口令
+- POST /internal/users/{emp_no}/status                        # 内网管理：账号启停
 
 安全实现（PRD 8.5.2 安全要求）：
 - PKCE 必须（S256）；code 一次性 5 分钟；state 由客户端校验（Broker 透传）
 - redirect_uri 仅允许 127.0.0.1 loopback（RFC 8252）+ 配置内的生产回调
 - 账号映射：工号必须命中 HR 主数据，否则拒绝（PRD 8.5.6，不自动创建）
+- 登录失败统一回显「工号或密码错误」（不区分哪个错，防用户枚举）
 """
 
 import os
@@ -22,6 +25,7 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 from mock_idp import keys, pages
 from mock_idp.store import (
@@ -212,39 +216,38 @@ async def authorize_submit(
     code_challenge_method: str = Form(""),
     nonce: str = Form(""),
     emp_no: str = Form(""),
+    password: str = Form(""),
 ) -> HTMLResponse | RedirectResponse:
-    """工号认证 → 签发一次性授权码 → 302 回 loopback（state 透传由客户端校验）。"""
-    if not emp_no.strip():
-        params = {
-            "response_type": response_type,
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "scope": scope,
-            "state": state,
-            "code_challenge": code_challenge,
-            "code_challenge_method": code_challenge_method,
-            "nonce": nonce,
-        }
-        return HTMLResponse(pages.login_page(params, error="请输入员工工号"))
+    """工号+密码认证 → 签发一次性授权码 → 302 回 loopback（state 透传由客户端校验）。"""
+    params = {
+        "response_type": response_type,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": code_challenge_method,
+        "nonce": nonce,
+    }
 
-    from mock_idp.users import find_by_emp_no
+    from mock_idp.users import find_by_emp_no, verify_password
+
+    if not emp_no.strip() or not password:
+        # 必填兜底（页面 required 已拦截空提交；直连 API 场景统一回显，防枚举）
+        return HTMLResponse(
+            pages.login_page(params, error="工号或密码错误"), status_code=401
+        )
 
     user = find_by_emp_no(emp_no)
-    if user is None:
-        # PRD 8.5.6：无法匹配工号 → 拒绝登录（不自动创建，防影子账号）
-        params = {
-            "response_type": response_type,
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "scope": scope,
-            "state": state,
-            "code_challenge": code_challenge,
-            "code_challenge_method": code_challenge_method,
-            "nonce": nonce,
-        }
+    if user is None or not verify_password(user, password):
+        # PRD 8.5.6：工号未匹配或口令不匹配 → 统一回显（不区分哪个错，防用户枚举）
         return HTMLResponse(
-            pages.login_page(params, error="工号无法匹配 HR 主数据，请联系信息科"),
-            status_code=401,
+            pages.login_page(params, error="工号或密码错误"), status_code=401
+        )
+
+    if not user.enabled:
+        return HTMLResponse(
+            pages.login_page(params, error="账号已停用，请联系管理员"), status_code=401
         )
 
     session = store.new_session(sub=user.emp_no)
@@ -336,6 +339,53 @@ async def revoke(
     """登出：吊销 refresh 会话链（PRD 8.5.7 强制下线/登出）。"""
     revoked = store.revoke_refresh(token)
     return {"revoked": revoked}
+
+
+# ---- 内网管理端点（仅限内网 dev，无鉴权与 mock_idp 现有风格一致；生产由 Keycloak 承担） ----
+
+
+class _PasswordResetBody(BaseModel):
+    """重置口令请求体。"""
+
+    new_password: str
+
+
+class _UserStatusBody(BaseModel):
+    """启停账号请求体。"""
+
+    enabled: bool
+
+
+@app.post("/internal/users/{emp_no}/password", response_model=None)
+async def internal_reset_password(
+    emp_no: str, body: _PasswordResetBody
+) -> JSONResponse | dict[str, Any]:
+    """内网管理：重置口令（最小长度 8，重置后哈希更新）。"""
+    if len(body.new_password) < 8:
+        return JSONResponse({"error": "new_password 最小长度为 8"}, status_code=400)
+
+    from mock_idp.users import reset_password
+
+    updated = reset_password(emp_no, body.new_password)
+    if updated is None:
+        return JSONResponse({"error": f"工号不在 HR 主数据：{emp_no}"}, status_code=404)
+    print(f"[mock-idp] 内网管理：重置口令 emp_no={updated.emp_no} name={updated.name}")
+    return {"emp_no": updated.emp_no, "updated": True}
+
+
+@app.post("/internal/users/{emp_no}/status", response_model=None)
+async def internal_set_user_status(
+    emp_no: str, body: _UserStatusBody
+) -> JSONResponse | dict[str, Any]:
+    """内网管理：启用/停用账号（停用后登录即拒绝）。"""
+    from mock_idp.users import set_enabled
+
+    updated = set_enabled(emp_no, body.enabled)
+    if updated is None:
+        return JSONResponse({"error": f"工号不在 HR 主数据：{emp_no}"}, status_code=404)
+    action = "启用" if body.enabled else "停用"
+    print(f"[mock-idp] 内网管理：{action}账号 emp_no={updated.emp_no} name={updated.name}")
+    return {"emp_no": updated.emp_no, "enabled": updated.enabled}
 
 
 def _oauth_error(error: str, description: str, status: int = 400) -> JSONResponse:

@@ -7,6 +7,7 @@ import {
   AudioOutlined,
   BookOutlined,
   BulbOutlined,
+  CheckSquareOutlined,
   ClockCircleOutlined,
   CloudServerOutlined,
   CommentOutlined,
@@ -47,6 +48,7 @@ import { useInboxNotify } from './lib/inboxNotify'
 import MarketView from './views/MarketView'
 import KnowledgeView from './views/KnowledgeView'
 import AutomationView from './views/AutomationView'
+import TasksView from './views/TasksView'
 import MemoryView from './views/MemoryView'
 import SettingsView from './views/SettingsView'
 import { useSkin } from './theme'
@@ -57,13 +59,14 @@ const bridge = window.chatwork
 const WEB_SMOKE_USER_ID = 'u001'
 
 // 左侧导航视图（对齐 prototype.html：工作台/个人两组菜单）
-type ViewKey = 'chat' | 'market' | 'kb' | 'auto' | 'memory' | 'settings'
+type ViewKey = 'chat' | 'market' | 'kb' | 'auto' | 'tasks' | 'memory' | 'settings'
 
 const viewTitles: Record<ViewKey, string> = {
   chat: 'Chat-Work 企业内网 AI Agent',
   market: '技能市场',
   kb: '知识库',
   auto: '自动化',
+  tasks: '工作任务',
   memory: '我的记忆',
   settings: '设置'
 }
@@ -201,6 +204,7 @@ export default function App() {
                 '自动化'
               )
           },
+          { key: 'tasks', icon: <CheckSquareOutlined />, label: '工作任务' },
           menuGroupAdmin
         ]
       },
@@ -732,6 +736,8 @@ export default function App() {
                   <KnowledgeView />
                 ) : view === 'auto' ? (
                   <AutomationView tab={autoTab} onTabChange={setAutoTab} />
+                ) : view === 'tasks' ? (
+                  <TasksView />
                 ) : view === 'memory' ? (
                   <MemoryView />
                 ) : (

@@ -35,10 +35,19 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent_core import audit, automation
+from agent_core.accounts import store as accounts_store
 from agent_core.api import admin, gray
-from agent_core.api.auth import AuthContext, authenticate, set_sso_required, sso_required
+from agent_core.api.auth import (
+    AuthContext,
+    authenticate,
+    bearer_token,
+    set_sso_required,
+    sso_required,
+)
+from agent_core.assignments import store as assignments_store
 from agent_core.guardrail import confirm_store
 from agent_core.knowledge import store as knowledge_store
+from agent_core.mcp_client import set_caller_token
 from agent_core.memory import store as memory_store
 from agent_core.pipeline.graph import (
     build_graph,
@@ -56,6 +65,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """启动恢复：技能市场 / 知识库 / 编排 / 自动化任务快照，并挂载调度器
     （PLAN P2.3-P2.6）；官方跨系统编排 seed（幂等，PRD 6.3）。"""
     await audit.restore()
+    await accounts_store.restore()
+    await assignments_store.restore()
     await store.restore()
     await knowledge_store.restore()
     await workflow_store.restore()
@@ -162,6 +173,13 @@ class EventFireRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class AssignmentStatusRequest(BaseModel):
+    """任务单状态推进请求（P1-2：in_progress/done/cancelled + 可选备注）。"""
+
+    status: str = Field(min_length=1)
+    note: str = ""
+
+
 class WorkflowCreateRequest(BaseModel):
     """编排注册请求（PLAN P2.6 p2-6f：steps 声明式，PRD 3.2.2）。"""
 
@@ -256,15 +274,22 @@ async def health() -> dict[str, str]:
 
 
 async def _authenticate_or_401(request: Request) -> AuthContext | None:
-    """统一鉴权：SSO_REQUIRED 时未带/验签失败 → 401（PRD 8.5）。"""
+    """统一鉴权：SSO_REQUIRED 时未带/验签失败 → 401（PRD 8.5）。
+
+    鉴权通过即把用户 JWT 记入 contextvar（P1-1 X-Chat-Auth 全链路）：
+    后续 mcp_client 调 mcp_* 时随连接透传，服务端持公钥自行验签 +
+    校验 user_id 一致性（防越权）。未登录（本地冒烟）置 None，不透传。
+    """
     try:
         auth = await authenticate(request)
     except Exception as exc:
+        set_caller_token(None)
         if sso_required():
             raise HTTPException(status_code=401, detail=f"认证失败：{exc}") from exc
         return None
     if auth is None and sso_required():
         raise HTTPException(status_code=401, detail="缺少认证凭证（Bearer / X-Chat-Auth）")
+    set_caller_token(bearer_token(request) if auth is not None else None)
     return auth
 
 
@@ -905,6 +930,47 @@ async def automation_history(
     _require_task(task_id, auth)
     items = automation.history(task_id, limit=max(1, min(limit, 100)))
     return {"items": items, "count": len(items)}
+
+
+# ---- assignment 任务单（P1-2 @分身委托会话：员工任务可见 + 状态推进）----
+
+
+def _assignment_auth(auth: AuthContext | None) -> AuthContext:
+    """任务单端点统一认证门禁（口径对齐自动化端点）。"""
+    if auth is None:
+        raise HTTPException(status_code=401, detail="任务单需要认证")
+    return auth
+
+
+@app.get("/assignments")
+async def list_assignments(
+    request: Request, view: str | None = None, status: str | None = None
+) -> dict[str, Any]:
+    """我的任务单（P1-2）：双视角总览；view=mine 仅布置给我的 / assigned 仅我布置的。"""
+    auth = _assignment_auth(await _authenticate_or_401(request))
+    if view == "mine":
+        items = assignments_store.list_for_assignee(auth.user_id, status=status)
+        return {"items": items, "count": len(items)}
+    if view == "assigned":
+        items = assignments_store.list_by_assigner(auth.user_id, status=status)
+        return {"items": items, "count": len(items)}
+    overview = assignments_store.overview(auth.user_id)
+    count = len(overview["assigned_to_me"]) + len(overview["assigned_by_me"])
+    return {**overview, "count": count}
+
+
+@app.post("/assignments/{task_id}/status")
+async def update_assignment_status(
+    task_id: str, req: AssignmentStatusRequest, request: Request
+) -> dict[str, Any]:
+    """推进任务单状态：接收人 in_progress/done、布置人 cancelled（store 层校验）。"""
+    auth = _assignment_auth(await _authenticate_or_401(request))
+    try:
+        return await assignments_store.update_status(
+            task_id, req.status, by=auth.user_id, note=req.note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---- 跨系统编排（PLAN P2.6 p2-6f，PRD 3.2.2/6.3：workflow 域 REST）----

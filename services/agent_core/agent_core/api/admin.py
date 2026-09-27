@@ -43,6 +43,9 @@ _REDIRECT_URI = f"{ADMIN_BASE_URL}/admin/callback"
 # 管理角色（PRD 5.6.1 矩阵：任一角色可登录工作台；页面级再细分）
 ADMIN_ROLES = {"system_admin", "security_reviewer", "knowledge_manager", "org_admin", "auditor"}
 
+# mock_idp 内部管理端点基地址（账号管理页联动：停用/启用/重置密码，P0-3）
+MOCK_IDP_URL = os.environ.get("MOCK_IDP_URL", "http://127.0.0.1:8012").rstrip("/")
+
 IDLE_TTL_SECONDS = 30 * 60  # 会话 30 分钟无操作锁定（PRD 5.6.4）
 FLOW_TTL_SECONDS = 5 * 60  # OIDC 授权流程态有效期（与授权码生命周期对齐）
 SESSION_COOKIE = "admin_session"
@@ -421,6 +424,54 @@ async def automation_status(request: Request, task_id: str) -> RedirectResponse 
         return _back("/admin/automation", err=str(exc))
 
 
+# ---- 工作台 3.5：任务单治理（P1-2 @分身布置任务，组织人事域） ----
+
+_ASSIGNMENT_VIEWERS = {"org_admin", "system_admin", "auditor"}
+_ASSIGNMENT_ADMINS = {"org_admin", "system_admin"}
+
+
+@router.get("/assignments", response_model=None)
+async def assignments_page(
+    request: Request, status: str = "", msg: str = "", err: str = ""
+) -> RedirectResponse | HTMLResponse:
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/assignments")
+    if bad := _gate(request, sess, _ASSIGNMENT_VIEWERS):
+        return bad
+    from agent_core.assignments import store as assignments_store
+
+    items = assignments_store.list_all(status=status or None)
+    return _templates.TemplateResponse(
+        request,
+        "assignments.html",
+        page_ctx(sess, nav="assignments", items=items, status=status, msg=msg, err=err),
+    )
+
+
+@router.post("/assignments/{task_id}/status", response_model=None)
+async def assignment_status(request: Request, task_id: str) -> RedirectResponse | HTMLResponse:
+    """治理动作：取消任意未终态任务单（归属校验放宽为管理角色，状态机
+    仍生效；接收人推进走聊天/REST，不走治理页）。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/assignments")
+    if bad := _gate(request, sess, _ASSIGNMENT_ADMINS):
+        return bad
+    from agent_core.assignments import store as assignments_store
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/assignments", err="CSRF 校验失败，操作被拒绝")
+    try:
+        await assignments_store.update_status(
+            task_id, "cancelled", by=sess["user_id"], as_admin=True
+        )
+    except ValueError as exc:
+        return _back("/admin/assignments", err=str(exc))
+    return _back("/admin/assignments", msg=f"任务单 {task_id} 已取消")
+
+
 # ---- 工作台 4：系统配置（系统管理员，PRD 5.6.1/8.3/11） ----
 
 
@@ -693,4 +744,188 @@ async def audit_export(request: Request, user_id: str = "", action: str = "", li
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
     )
+
+
+# ---- 工作台 6：数字分身账号（P0-3：org_admin 管理，system_admin 只读） ----
+#
+# 分身模型：分身不是独立账号，而是「账号的 agent 化执行面」——分身身份
+# 即员工本人身份。本页治理：分身开关（@可达性）、冻结（三合一）、
+# 技能授权绑定（写入技能授予/回收，deny 语义）、密码重置（IdP 联动）。
+
+_ACCOUNT_ADMINS = {"org_admin"}
+_ACCOUNT_VIEWERS = {"org_admin", "system_admin"}
+
+
+async def _idp_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """调 mock_idp 内部管理端点（/internal/users/*）；模块级便于测试打桩。"""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=5) as client:
+        resp = await client.post(f"{MOCK_IDP_URL}{path}", json=payload)
+    if resp.status_code != 200:
+        raise RuntimeError(f"HTTP {resp.status_code} {resp.text[:200]}")
+    return resp.json()
+
+
+@router.get("/accounts", response_model=None)
+async def accounts_page(request: Request, msg: str = "", err: str = "") -> RedirectResponse | HTMLResponse:
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/accounts")
+    if bad := _gate(request, sess, _ACCOUNT_VIEWERS):
+        return bad
+    from agent_core.accounts import store as accounts_store
+    from agent_core.skills import store as skill_store
+
+    items = accounts_store.list_accounts()
+    for a in items:
+        a["granted"] = skill_store.granted_names(a["emp_no"])
+        a["revoked"] = skill_store.revoked_names(a["emp_no"])
+    # 授权下拉只列写入类技能：deny 语义仅约束写路径（读路径由数据范围保证）
+    skills = [m for m in skill_store.list_meta() if m["rw"] == "write"]
+    return _templates.TemplateResponse(
+        request,
+        "accounts.html",
+        page_ctx(
+            sess,
+            nav="accounts",
+            items=items,
+            skills=skills,
+            can_admin=bool(_ACCOUNT_ADMINS & set(sess["roles"])),
+            msg=msg,
+            err=err,
+        ),
+    )
+
+
+@router.post("/accounts/{emp_no}/twin", response_model=None)
+async def account_twin(request: Request, emp_no: str) -> RedirectResponse | HTMLResponse:
+    """数字分身开关：关闭仅影响 @数字人可达性（P1 委托会话），不影响本人使用。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/accounts")
+    if bad := _gate(request, sess, _ACCOUNT_ADMINS):
+        return bad
+    from agent_core.accounts import store as accounts_store
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+    enabled = str(form.get("value", "")) == "true"
+    try:
+        await accounts_store.set_twin(emp_no, enabled, by=sess["user_id"])
+    except ValueError as exc:
+        return _back("/admin/accounts", err=str(exc))
+    return _back("/admin/accounts", msg=f"{emp_no} 数字分身已{'开启' if enabled else '关闭'}")
+
+
+@router.post("/accounts/{emp_no}/freeze", response_model=None)
+async def account_freeze(request: Request, emp_no: str) -> RedirectResponse | HTMLResponse:
+    """冻结三合一：agent 侧 frozen 标记 + token denylist（全部 token 立即 401）
+    + IdP 停用（不能再登录）；解冻反向联动。IdP 不可达不阻断 agent 侧生效。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/accounts")
+    if bad := _gate(request, sess, _ACCOUNT_ADMINS):
+        return bad
+    from agent_core.accounts import store as accounts_store
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+    freeze = str(form.get("action", "")) == "freeze"
+    if freeze and emp_no == sess["user_id"]:
+        return _back("/admin/accounts", err="不能冻结当前登录账号")
+    try:
+        await accounts_store.set_frozen(emp_no, freeze, by=sess["user_id"])
+        if freeze:
+            api_auth.deny_user(emp_no)
+        else:
+            api_auth.allow_user(emp_no)
+        idp_note = ""
+        try:
+            await _idp_post(f"/internal/users/{emp_no}/status", {"enabled": not freeze})
+        except Exception as exc:  # noqa: BLE001 — IdP 失败降级为提示，agent 侧已生效
+            idp_note = f"（IdP 侧{'停用' if freeze else '启用'}失败：{exc}）"
+    except ValueError as exc:
+        return _back("/admin/accounts", err=str(exc))
+    if freeze:
+        return _back("/admin/accounts", msg=f"账号 {emp_no} 已冻结（token 立即失效）{idp_note}")
+    return _back("/admin/accounts", msg=f"账号 {emp_no} 已解冻{idp_note}")
+
+
+@router.post("/accounts/{emp_no}/password", response_model=None)
+async def account_password(request: Request, emp_no: str) -> RedirectResponse | HTMLResponse:
+    """密码重置：调 mock_idp /internal/users/{emp_no}/password（≥8 位）。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/accounts")
+    if bad := _gate(request, sess, _ACCOUNT_ADMINS):
+        return bad
+    from agent_core import audit
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+    new_password = str(form.get("password", ""))
+    if len(new_password) < 8:
+        return _back("/admin/accounts", err="新密码至少 8 位")
+    try:
+        await _idp_post(f"/internal/users/{emp_no}/password", {"password": new_password})
+    except Exception as exc:  # noqa: BLE001 — IdP 不可达/未知工号
+        return _back("/admin/accounts", err=f"密码重置失败：{exc}")
+    await audit.record(
+        "account_password_reset",
+        tool="admin_web",
+        params={"emp_no": emp_no},
+        user_id=sess["user_id"],
+        result="ok",
+        detail=f"重置 {emp_no} 登录密码（明文不落审计）",
+    )
+    return _back("/admin/accounts", msg=f"账号 {emp_no} 密码已重置")
+
+
+@router.post("/accounts/{emp_no}/grants", response_model=None)
+async def account_grants(request: Request, emp_no: str) -> RedirectResponse | HTMLResponse:
+    """技能授权绑定（技能 ↔ 数字分身账号）：授予 = 授权记录；回收后该账号
+    对此写技能立即拒绝（permission 节点消费 is_revoked，deny 语义）。"""
+    sess = require_session(request)
+    if sess is None:
+        return login_redirect("/admin/accounts")
+    if bad := _gate(request, sess, _ACCOUNT_ADMINS):
+        return bad
+    from agent_core import audit
+    from agent_core.accounts import store as accounts_store
+    from agent_core.skills import store as skill_store
+
+    form = await request.form()
+    if not verify_csrf(sess, form):
+        return _back("/admin/accounts", err="CSRF 校验失败，操作被拒绝")
+    if accounts_store.get(emp_no) is None:
+        return _back("/admin/accounts", err=f"账号 {emp_no} 不存在")
+    name = str(form.get("skill", ""))
+    action = str(form.get("action", ""))
+    try:
+        if action == "grant":
+            await skill_store.grant(name, user_id=emp_no, by=sess["user_id"])
+            await audit.record(
+                "skill_grant",
+                tool="admin_web",
+                params={"skill": name, "user_id": emp_no},
+                user_id=sess["user_id"],
+                result="ok",
+                detail=f"授予 {emp_no} 技能「{name}」",
+            )
+            return _back("/admin/accounts", msg=f"已向 {emp_no} 授予技能「{name}」")
+        if action == "revoke":
+            await skill_store.revoke_access(
+                name, user_id=emp_no, by=sess["user_id"], note=str(form.get("note", ""))
+            )
+            return _back(
+                "/admin/accounts",
+                msg=f"已回收 {emp_no} 对「{name}」的授权，写路径立即拒绝",
+            )
+    except ValueError as exc:
+        return _back("/admin/accounts", err=str(exc))
+    return _back("/admin/accounts", err="未知操作")
 

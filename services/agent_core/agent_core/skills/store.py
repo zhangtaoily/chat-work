@@ -42,7 +42,10 @@ _STATUSES = ("draft", "submitted", "in_review", "published", "rejected", "deprec
 _CATEGORIES = ("official", "dept", "personal")
 
 _meta: dict[str, dict[str, Any]] = {}
-_installs: dict[str, set[str]] = {}  # user_id -> 已安装技能名
+# 技能授权（数字分身绑定，P0）：user_id -> skill -> {granted_by, granted_at}
+# 语义：安装/授予即授权；管理员回收（_revoked）后写路径立即拒绝
+_grants: dict[str, dict[str, dict[str, Any]]] = {}
+_revoked: dict[str, set[str]] = {}  # user_id -> 被管理员回收授权的技能名
 _seq = 0  # 评审单号自增（SEC-RV-*）
 _redis_client: Any = None
 
@@ -100,7 +103,8 @@ def reset() -> None:
     """清空市场状态并重建内置基线（测试隔离用）。"""
     global _seq
     _meta.clear()
-    _installs.clear()
+    _grants.clear()
+    _revoked.clear()
     _seq = 0
     _ensure()
 
@@ -154,7 +158,8 @@ async def _snapshot() -> None:
     """写事件后镜像快照（无 Redis 落本地文件兜底；stats 一并保存，重启不清零）。"""
     payload = {
         "meta": _meta,
-        "installs": {u: sorted(v) for u, v in _installs.items()},
+        "grants": _grants,
+        "revoked": {u: sorted(v) for u, v in _revoked.items()},
         "seq": _seq,
     }
     r = _get_redis()
@@ -178,7 +183,13 @@ async def restore() -> None:
         _meta.update(snap.get("meta", {}))
         for m in _meta.values():  # 旧快照无 approvals 字段（双人复核引入前）兜底
             m.setdefault("approvals", [])
-        _installs.update({u: set(v) for u, v in snap.get("installs", {}).items()})
+        if "grants" in snap:  # 新格式：带授权元数据
+            for u, grants in snap.get("grants", {}).items():
+                _grants[u] = {s: dict(g) for s, g in grants.items()}
+        else:  # 旧快照 installs（user -> [skill]）迁移为授权记录
+            for u, skills in snap.get("installs", {}).items():
+                _grants[u] = {s: {"granted_by": None, "granted_at": None} for s in skills}
+        _revoked.update({u: set(v) for u, v in snap.get("revoked", {}).items()})
         global _seq
         _seq = int(snap.get("seq", 0))
         return
@@ -373,27 +384,75 @@ async def deprecate(name: str, *, by: str, note: str = "") -> dict[str, Any]:
     return dict(meta)
 
 
-# ---- 安装（PRD 3.4 一键安装：权限校验在 API 层，store 只记清单）----
+# ---- 安装与授权（PRD 3.4 一键安装；安装即授权，管理员回收即拒绝）----
 
 
-async def install(name: str, *, user_id: str) -> None:
+async def install(name: str, *, user_id: str, by: str | None = None) -> None:
+    """安装技能（= 授权记录：granted_by/granted_at 留痕，回收授权时重新授予清除标记）。"""
     _ensure()
     if name not in _meta:
         raise ValueError(f"技能 {name} 未注册")
-    _installs.setdefault(user_id, set()).add(name)
+    _grants.setdefault(user_id, {})[name] = {"granted_by": by, "granted_at": _now()}
+    _revoked.get(user_id, set()).discard(name)
     await _snapshot()
 
 
 async def uninstall(name: str, *, user_id: str) -> None:
     _ensure()
-    _installs.get(user_id, set()).discard(name)
+    _grants.get(user_id, {}).pop(name, None)
     await _snapshot()
 
 
-def installed_of(user_id: str) -> list[dict[str, Any]]:
-    """我的技能（安装清单 + 市场元数据快照）。"""
+async def grant(name: str, *, user_id: str, by: str) -> None:
+    """管理员直接授予（管理后台「数字分身账号」工作台用）。"""
+    await install(name, user_id=user_id, by=by)
+
+
+async def revoke_access(name: str, *, user_id: str, by: str, note: str = "") -> None:
+    """管理员回收授权：写路径立即拒绝（permission 节点消费 is_revoked）。"""
     _ensure()
-    return [dict(_meta[n]) for n in sorted(_installs.get(user_id, set())) if n in _meta]
+    if name not in _meta:
+        raise ValueError(f"技能 {name} 未注册")
+    _revoked.setdefault(user_id, set()).add(name)
+    await audit.record(
+        "skill_grant_revoke",
+        tool="skill_store",
+        params={"skill": name, "user_id": user_id},
+        user_id=by or None,
+        result="ok",
+        detail=f"回收 {user_id} 对「{name}」的授权{('：' + note) if note else ''}",
+    )
+    await _snapshot()
+
+
+def has_grant(user_id: str, name: str) -> bool:
+    """是否持有授权（同步无 IO，permission 节点调用）。"""
+    _ensure()
+    return name in _grants.get(user_id, {}) and name not in _revoked.get(user_id, set())
+
+
+def is_revoked(user_id: str, name: str) -> bool:
+    """是否被管理员回收授权（deny 语义，默认 False 保持既有链路）。"""
+    _ensure()
+    return name in _revoked.get(user_id, set())
+
+
+def granted_names(user_id: str) -> list[str]:
+    """已授权技能名列表（管理后台展示）。"""
+    _ensure()
+    return sorted(_grants.get(user_id, {}))
+
+
+def revoked_names(user_id: str) -> list[str]:
+    """被回收授权的技能名列表（管理后台展示）。"""
+    _ensure()
+    return sorted(_revoked.get(user_id, set()))
+
+
+def installed_of(user_id: str) -> list[dict[str, Any]]:
+    """我的技能（授权清单 + 市场元数据快照）。"""
+    _ensure()
+    return [dict(_meta[n]) for n in granted_names(user_id) if n in _meta]
 
 
 # ---- 使用统计（PRD 3.4：调用量/成功率反哺优化）----

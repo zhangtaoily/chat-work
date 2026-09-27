@@ -32,6 +32,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp_oa")
 
+import xauth
 from adapters.oa_client import get_adapter
 from tools.activity import register as register_activity
 from tools.approvals import register as register_approvals
@@ -45,6 +46,9 @@ mcp = FastMCP(
     host=os.environ.get("MCP_OA_HOST", "127.0.0.1"),
     port=int(os.environ.get("MCP_OA_PORT", "8001")),
 )
+
+# X-Chat-Auth 越权守卫（P1-1）：工具层 guard() 依赖实例取请求上下文
+xauth.setup(mcp)
 
 # 工具注册（adapter 单例在闭包内复用；OA_MODE 决定 mock/http）
 assert get_adapter() is not None

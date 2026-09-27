@@ -40,6 +40,8 @@ from typing import Annotated, Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from agent_core import audit
+from agent_core.accounts import store as accounts_store
+from agent_core.assignments import store as assignments_store
 from agent_core.automation import store as automation_store
 from agent_core.guardrail import confirm_store
 from agent_core.knowledge import store as knowledge_store
@@ -69,6 +71,14 @@ _STAGE_MESSAGES = {
 
 _LEAVE_TYPE_LABELS = rules.LEAVE_TYPE_LABELS
 _TX_REASON_LABELS = rules.TX_REASON_LABELS
+
+# P1-2 任务单状态中文标签（twin_task_update 推进结果渲染）
+_TASK_STATUS_LABELS = {
+    "pending": "待开始",
+    "in_progress": "进行中",
+    "done": "已完成",
+    "cancelled": "已取消",
+}
 
 
 def _required_fields(skill: dict, draft: dict) -> list[str]:
@@ -196,15 +206,47 @@ async def intent_node(state: ChatState) -> dict[str, Any]:
 
 
 async def route_node(state: ChatState) -> dict[str, Any]:
-    """阶段2 技能/工具路由：Skill Registry 匹配；未命中且存在补问挂起
-    （pending slot）则沿用挂起技能继续收集；命中其他技能则清除挂起。
+    """阶段2 技能/工具路由：@他人分身点名语义最强（优先于业务关键词与
+    pending 续收）；Skill Registry 匹配；未命中且存在补问挂起（pending
+    slot）则沿用挂起技能继续收集；命中其他技能则清除挂起。
+
+    @点名分支（P1-2.2）：@提及可解析 + 非@自己 + 被者账号存在且分身开启
+    未冻结 → 布置语义（布置词或截止短语命中，或分段收集中）进任务单
+    流程，其余进分身代答；正文里的业务关键词（如「销售订单」）只是任务
+    内容，不把发消息人卷入业务表单流程。
 
     知识消歧（PRD 9.5.3 注入点1）：技能与挂起均未命中时检索知识库
     （科室 FAQ/制度文档 Top-3），命中即转 knowledge_qa 纯 RAG 问答流
     （不调业务工具）；未命中维持闲聊兜底，store 侧记知识缺口。
     """
     events = [_stage("route")]
-    skill = match_skill(state.get("message", ""))
+    message = state.get("message", "")
+    # P1-2.2 @他人分身点名前置短路：布置任务优先于业务关键词匹配
+    mention = rules.extract_mention(message)
+    emp_no = accounts_store.resolve_mention(mention) if mention else None
+    if (
+        emp_no
+        and emp_no != state["user_id"]
+        and accounts_store.get(emp_no)
+        and accounts_store.is_twin_enabled(emp_no)
+        and not accounts_store.is_frozen(emp_no)
+    ):
+        # twin_assign_task 分段收集进行中：续收优先（裸 @提及也续收）
+        pending = await slots.get_pending(state["user_id"], state["session_id"])
+        collecting = bool(pending and pending["skill_name"] == "twin_assign_task")
+        hit = match_skill(message)
+        assign_hit = (
+            collecting
+            or (hit is not None and hit["name"] == "twin_assign_task")
+            or rules.extract_deadline(message) is not None
+        )
+        return {
+            "skill": get_skill(
+                "twin_assign_task" if assign_hit else "twin_mention_chat"
+            ),
+            "events": events,
+        }
+    skill = match_skill(message)
     if skill is None:
         # intent 阶段 LLM 兜底识别的技能承接（规则层无关键词，不再重复识别）
         intent = state.get("intent") or {}
@@ -526,6 +568,58 @@ async def _extract_fields(state: ChatState) -> dict[str, Any]:
         )
         return {"draft": draft, "events": events}
 
+    # P1-2 @分身布置工作：@提及 + 正文 + 截止（可选）分段收集
+    # （同自动化任务分段收集范式：合并挂起草稿，补问轮续上下文）
+    if skill["name"] == "twin_assign_task":
+        pending = await slots.get_pending(state["user_id"], state["session_id"])
+        draft = dict(pending["draft"]) if pending else {}
+        msg = state.get("message", "")
+        mention = rules.extract_mention(msg)
+        if mention:
+            emp_no = accounts_store.resolve_mention(mention)
+            if emp_no:
+                draft["assignee"] = {"value": emp_no, "source": "ask"}
+        content = rules.extract_assign_content(msg, mention)
+        if content:
+            draft["content"] = {"value": content, "source": "ask"}
+        deadline = rules.extract_deadline(msg)
+        if deadline:
+            draft["deadline"] = {"value": deadline, "source": "ask"}
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
+        await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
+        events.append(
+            {
+                "type": "draft_card",
+                "draft": draft,
+                "missing_fields": missing,
+                "draft_version": 1,
+            }
+        )
+        return {"draft": draft, "events": events}
+
+    # P1-2 任务状态推进：任务号 + 目标状态分段收集（同布置任务续收范式）
+    if skill["name"] == "twin_task_update":
+        pending = await slots.get_pending(state["user_id"], state["session_id"])
+        draft = dict(pending["draft"]) if pending else {}
+        msg = state.get("message", "")
+        task_id = rules.extract_task_id(msg)
+        if task_id:
+            draft["task_id"] = {"value": task_id, "source": "ask"}
+        status = rules.extract_task_status(msg)
+        if status:
+            draft["status"] = {"value": status, "source": "ask"}
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
+        await slots.set_pending(state["user_id"], state["session_id"], skill["name"], draft)
+        events.append(
+            {
+                "type": "draft_card",
+                "draft": draft,
+                "missing_fields": missing,
+                "draft_version": 1,
+            }
+        )
+        return {"draft": draft, "events": events}
+
     # ---- P3.1 MES / U8（PLAN P3.1，PRD 7.1）：只读查询，参数可选分流 ----
 
     # 生产报工：工单号直达报工明细；SKU 可选过滤（无单号 → 工单进度列表）
@@ -802,6 +896,15 @@ async def validate_node(state: ChatState) -> dict[str, Any]:
             "validation": {"missing_fields": missing, "errors": [], "passed": not missing},
             "events": events,
         }
+    # P1-2 布置工作/任务推进：仅必填缺失校验（直属上级/操作者等准入
+    # 防线在 store 层）
+    if skill["name"] in {"twin_assign_task", "twin_task_update"}:
+        draft = state.get("draft") or {}
+        missing = [f for f in _required_fields(skill, draft) if f not in draft]
+        return {
+            "validation": {"missing_fields": missing, "errors": [], "passed": not missing},
+            "events": events,
+        }
     # 跨系统编排：仅必填缺失校验（缺失触发补问；明细/联系人细节由
     # workflow 步骤执行与 MCP 契约校验兜底）
     if skill["name"] == "cross_system_order_flow":
@@ -834,7 +937,9 @@ async def permission_node(state: ChatState) -> dict[str, Any]:
     draft = state.get("draft") or {}
     message: str | None = None
     if _is_write_turn(skill, draft):
-        message = permissions.check_skill_roles(auth, skill)
+        message = permissions.check_skill_roles(auth, skill) or (
+            permissions.check_skill_grant(auth, skill)
+        )
     if message is None and skill.get("dept_scope"):
         # 数据级·组织维（P2.2 本科室级）：科室工作台技能按 auth.dept 准入
         message = permissions.check_dept_scope(auth, skill)
@@ -899,6 +1004,28 @@ def _eff_mode(state: Mapping[str, Any]) -> str:
         return override
     skill = state.get("skill") or {}
     return skill.get("mode") or ("craft" if skill.get("rw") == "write" else "ask")
+
+
+def _twin_capabilities(emp_no: str, entry: dict[str, Any]) -> list[str]:
+    """分身能力清单（P1-2.1 @分身代答上下文）：注入 prompt 使「你有什么
+    技能」类问题有据可答。
+
+    口径=管理后台「技能授权绑定」实际授予的技能（has_grant，已含回收
+    排除），且科室范围可执行（dept_scope 尾段匹配）——分身只广告自己
+    真正能代办的，不虚报全系统清单。twin_* 协议技能不列入。
+    """
+    dept_tail = str(entry.get("dept") or "").split("/")[-1]
+    caps: list[str] = []
+    for m in store.list_meta():
+        name = m["name"]
+        if name.startswith("twin_"):
+            continue
+        scope = m.get("dept_scope")
+        if scope and dept_tail != scope:
+            continue
+        if store.has_grant(emp_no, name):
+            caps.append(m["title"])
+    return sorted(caps)
 
 
 def _plan_payload(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -1412,6 +1539,66 @@ async def _execute_tools(state: ChatState) -> dict[str, Any]:
             except ValueError as exc:
                 return {"tool_result": {"error": str(exc)}, "events": events}
             return {"tool_result": {"task": task}, "events": events}
+
+        # P1-2 @分身布置工作：进程内直调 assignments.create（防线在 store 层：
+        # 直属上级准入 / 分身开启 / 非冻结），不走 MCP
+        if skill and skill["name"] == "twin_assign_task":
+            draft = state.get("draft") or {}
+            try:
+                task = await assignments_store.create(
+                    assigner=state["user_id"],
+                    assignee=draft["assignee"]["value"],
+                    title=draft["content"]["value"],
+                    deadline=(draft.get("deadline") or {}).get("value"),
+                )
+            except ValueError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": {"task": task}, "events": events}
+
+        # P1-2 任务进度：本人双视角（布置给我的 + 我布置的），进程内直调
+        if skill and skill["name"] == "twin_task_progress":
+            result = assignments_store.overview(state["user_id"])
+            return {"tool_result": result, "events": events}
+
+        # P1-2 任务状态推进：进程内直调 assignments.update_status（操作者
+        # 校验在 store 层：接收人推进 in_progress/done，布置人 cancelled）
+        if skill and skill["name"] == "twin_task_update":
+            draft = state.get("draft") or {}
+            try:
+                task = await assignments_store.update_status(
+                    draft["task_id"]["value"],
+                    draft["status"]["value"],
+                    by=state["user_id"],
+                )
+            except ValueError as exc:
+                return {"tool_result": {"error": str(exc)}, "events": events}
+            return {"tool_result": {"task": task}, "events": events}
+
+        # P1-2.1 @分身自由对话：以被@者分身人设 LLM 代答（准入已在 route
+        # 兜底校验，此处重解析取被@者；LLM 未配置/失败 → None，format
+        # 回落分身固定文案）。防越权约束在分身 system prompt
+        if skill and skill["name"] == "twin_mention_chat":
+            mention = rules.extract_mention(state.get("message", ""))
+            emp_no = accounts_store.resolve_mention(mention) if mention else None
+            entry = accounts_store.get(emp_no) if emp_no else None
+            if not entry:
+                return {"tool_result": {"error": "分身不可达"}, "events": events}
+            capabilities = _twin_capabilities(emp_no, entry)
+            reply = await llm.twin_chat(
+                state.get("message", ""),
+                twin_name=entry["name"],
+                twin_emp_no=emp_no,
+                user_id=state["user_id"],
+                capabilities=capabilities,
+            )
+            return {
+                "tool_result": {
+                    "reply": reply,
+                    "twin_name": entry["name"],
+                    "capabilities": capabilities,
+                },
+                "events": events,
+            }
 
         # 定时提醒执行体（automation 调度器触发，不参与 chat 路由）：
         # 渲染提醒正文，final 文本即通知内容（record_run 回写信箱）
@@ -1993,6 +2180,85 @@ async def _format_reply(state: ChatState) -> dict[str, Any]:
             cards = [{"type": "automation_task_create", "task": task}]
         events.append({"type": "final", "text": text, "cards": cards})
         return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # P1-2 布置工作：任务单确认（可感知性——接收人 + 任务号 + 截止，可到任务页查看）
+    if skill["name"] == "twin_assign_task" and isinstance(result, dict):
+        if "error" in result:
+            text = f"任务布置失败：{result['error']}"
+            cards = []
+        else:
+            await slots.clear_pending(state["user_id"], state["session_id"])
+            task = result.get("task") or {}
+            deadline = task.get("deadline")
+            text = (
+                f"已向「{task.get('assignee_name', '')}」的数字分身布置任务"
+                f"「{task.get('title', '')}」"
+                + (f"，截止 {deadline}" if deadline else "")
+                + f"（任务号 {task.get('id', '')}）。"
+                "对方将在其任务列表中看到并推进。"
+            )
+            cards = [{"type": "twin_assign_task", "task": task}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # P1-2 任务进度：双视角渲染（布置给我的待办 + 我布置出去的任务）
+    if skill["name"] == "twin_task_progress" and isinstance(result, dict):
+        to_me = result.get("assigned_to_me") or []
+        by_me = result.get("assigned_by_me") or []
+        lines: list[str] = []
+        if to_me:
+            lines.append("布置给你的任务：")
+            lines += [
+                f"- {t['title']}（{t['assigner_name']} 布置，{t['status']}）" for t in to_me
+            ]
+        if by_me:
+            lines.append("你布置的任务：")
+            lines += [
+                f"- {t['title']}（给 {t['assignee_name']}，{t['status']}）" for t in by_me
+            ]
+        text = "\n".join(lines) if lines else "当前没有进行中的任务。"
+        cards = [{"type": "twin_task_progress", **result}] if lines else []
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # P1-2 任务状态推进：结果确认（可感知性——任务号 + 新状态中文标签）
+    if skill["name"] == "twin_task_update" and isinstance(result, dict):
+        if "error" in result:
+            text = f"任务状态更新失败：{result['error']}"
+            cards = []
+        else:
+            await slots.clear_pending(state["user_id"], state["session_id"])
+            task = result.get("task") or {}
+            status = task.get("status", "")
+            text = (
+                f"任务 {task.get('id', '')}「{task.get('title', '')}」已推进为"
+                f"「{_TASK_STATUS_LABELS.get(status, status)}」"
+                f"（接收人 {task.get('assignee_name', '')}）。"
+            )
+            cards = [{"type": "twin_task_update", "task": task}]
+        events.append({"type": "final", "text": text, "cards": cards})
+        return {"final": {"text": text, "cards": cards}, "events": events}
+
+    # P1-2.1 @分身自由对话渲染：LLM 分身代答正文；未配置/失败回落
+    # 分身固定文案（能力清单 + 布置工作引导，衔接 twin_assign_task）
+    if skill["name"] == "twin_mention_chat" and isinstance(result, dict):
+        if result.get("error"):
+            text = "该同事的数字分身暂不可达，请稍后再试或直接联系本人。"
+        else:
+            twin_name = result.get("twin_name", "同事")
+            text = result.get("reply")
+            if not text:
+                caps = result.get("capabilities") or []
+                caps_line = (
+                    f"我当前可代为：{'、'.join(caps[:5])}。" if caps else ""
+                )
+                text = (
+                    f"你好，我是「{twin_name}」的数字分身。本人暂不在线，{caps_line}"
+                    f"如有工作安排可以直接布置，例如：@{twin_name} 周五前完成××，"
+                    "我会登记为任务单并跟进。"
+                )
+        events.append({"type": "final", "text": text, "cards": []})
+        return {"final": {"text": text, "cards": []}, "events": events}
 
     # 定时提醒执行体（调度器触发）：提醒正文即通知内容
     if skill["name"] == "send_reminder" and isinstance(result, dict):

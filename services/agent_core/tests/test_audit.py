@@ -119,7 +119,7 @@ class _FakeSession:
 
 def _patch_mcp(monkeypatch: pytest.MonkeyPatch, result: Any) -> None:
     @asynccontextmanager
-    async def fake_http(url: str) -> Any:
+    async def fake_http(url: str, headers: dict[str, str] | None = None) -> Any:
         yield None, None, None
 
     monkeypatch.setattr("agent_core.mcp_client.streamablehttp_client", fake_http)

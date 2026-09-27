@@ -197,14 +197,17 @@ async def test_memory_survive_restart() -> None:
 
 async def test_skills_survive_restart() -> None:
     skill_store._meta["erp_inventory_query"] = {"name": "erp_inventory_query", "approvals": []}
-    skill_store._installs["E1001"] = {"erp_inventory_query"}
+    skill_store._grants["E1001"] = {
+        "erp_inventory_query": {"granted_by": "E8001", "granted_at": "2026-09-27T10:00:00"}
+    }
     skill_store._seq = 1
     await skill_store._snapshot()
     skill_store.reset()
 
     await skill_store.restore()
     assert skill_store._meta["erp_inventory_query"]["name"] == "erp_inventory_query"
-    assert skill_store._installs["E1001"] == {"erp_inventory_query"}
+    assert "erp_inventory_query" in skill_store._grants["E1001"]
+    assert skill_store.granted_names("E1001") == ["erp_inventory_query"]
 
 
 # ---- Redis 优先级：配了 REDIS_URL 时文件不参与（结构验证）----

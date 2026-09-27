@@ -16,6 +16,7 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
+import xauth
 from adapters.crm_client import get_adapter
 from tools.customers import register as register_customers
 from tools.orders import register as register_orders
@@ -28,6 +29,9 @@ mcp = FastMCP(
     host=os.environ.get("MCP_CRM_HOST", "127.0.0.1"),
     port=int(os.environ.get("MCP_CRM_PORT", "8003")),
 )
+
+# X-Chat-Auth 越权守卫（P1-1）：工具层 guard() 依赖实例取请求上下文
+xauth.setup(mcp)
 
 # 工具注册（adapter 单例在闭包内复用；CRM_MODE 决定 mock/http）
 assert get_adapter() is not None

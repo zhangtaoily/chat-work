@@ -22,7 +22,7 @@ _BASE_CSS = """
 
 
 def login_page(params: dict[str, str], error: str | None = None) -> str:
-    """授权登录页：工号即身份（HR 主数据权威源，PRD 8.5.6）。"""
+    """授权登录页：工号 + 密码（HR 主数据为权威源，PRD 8.5.6）。"""
     hidden = "".join(
         f'<input type="hidden" name="{k}" value="{v}" />' for k, v in params.items()
     )
@@ -37,11 +37,12 @@ def login_page(params: dict[str, str], error: str | None = None) -> str:
     <p class="sub">通过公司统一身份认证登录（开发环境：Mock Broker）</p>
     {err_html}
     {hidden}
-    <input name="emp_no" placeholder="员工工号，如 E1001" autofocus />
+    <input name="emp_no" placeholder="员工工号，如 E1001" required autofocus />
+    <input type="password" name="password" placeholder="密码" required />
     <button type="submit">登录</button>
     <p class="hint">
       登录即同意以你的身份调用 OA / BI 系统。<br />
-      无法登录？工号未匹配到 HR 主数据时请联系信息科。
+      无法登录？请核对工号与密码，或联系信息科。
     </p>
   </form>
 </body>

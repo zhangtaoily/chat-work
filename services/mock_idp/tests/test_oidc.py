@@ -10,7 +10,7 @@ import httpx
 import jwt as pyjwt
 import pytest
 
-from mock_idp import keys
+from mock_idp import keys, users
 from mock_idp.main import app
 from mock_idp.store import store
 
@@ -36,11 +36,12 @@ def make_pkce() -> tuple[str, str]:
 async def authorize_and_get_code(
     client: httpx.AsyncClient,
     emp_no: str = "E1001",
+    password: str = users.SEED_PASSWORD,
     redirect_uri: str = REDIRECT,
     challenge: str | None = None,
     state: str = "s1",
 ) -> dict[str, str]:
-    """走 authorize 提交登录，解析 302 Location 中的 code/state。"""
+    """走 authorize 提交登录（工号+密码），解析 302 Location 中的 code/state。"""
     verifier, _challenge = make_pkce()
     if challenge is not None:
         _, challenge = challenge, challenge  # noqa: F841 - 语义占位
@@ -62,6 +63,7 @@ async def authorize_and_get_code(
             "code_challenge_method": "S256",
             "nonce": "",
             "emp_no": emp_no,
+            "password": password,
         },
     )
     assert resp.status_code == 302, resp.text
@@ -151,7 +153,7 @@ async def test_authorize_missing_params(client: httpx.AsyncClient) -> None:
 
 
 async def test_login_unknown_emp_no_rejected(client: httpx.AsyncClient) -> None:
-    """PRD 8.5.6：工号未匹配 HR 主数据 → 拒绝登录（不自动创建）。"""
+    """PRD 8.5.6：工号未匹配 HR 主数据 → 拒绝登录（统一回显，防用户枚举）。"""
     resp = await client.post(
         AUTH,
         data={
@@ -164,10 +166,11 @@ async def test_login_unknown_emp_no_rejected(client: httpx.AsyncClient) -> None:
             "code_challenge_method": "S256",
             "nonce": "",
             "emp_no": "E9999",
+            "password": users.SEED_PASSWORD,
         },
     )
     assert resp.status_code == 401
-    assert "HR 主数据" in resp.text
+    assert "工号或密码错误" in resp.text
 
 
 async def test_login_success_redirects_with_code_state(client: httpx.AsyncClient) -> None:

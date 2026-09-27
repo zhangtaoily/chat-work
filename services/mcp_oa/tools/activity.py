@@ -8,6 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+import xauth
 from adapters.oa_client import get_adapter
 
 
@@ -23,6 +24,7 @@ def register(mcp: FastMCP) -> None:
             user_id: 员工工号
             days: 回溯天数（1-31，默认 7）
         """
+        await xauth.guard(user_id)
         if not 1 <= days <= 31:
             raise ValueError("days 取值范围 1-31")
         return await adapter.list_activity_log(user_id, days)

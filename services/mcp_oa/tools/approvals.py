@@ -15,6 +15,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 import idempotency
+import xauth
 from adapters.oa_client import get_adapter
 
 _DOC_TYPES = ("leave", "expense", "purchase")
@@ -36,6 +37,7 @@ def register(mcp: FastMCP) -> None:
             doc_type: 可选，按单据类型过滤（leave/expense/purchase）
             limit: 返回条数（1-50，默认 10）
         """
+        await xauth.guard(user_id)
         if doc_type is not None and doc_type not in _DOC_TYPES:
             raise ValueError(f"无效单据类型：{doc_type}，可选值 {'/'.join(_DOC_TYPES)}")
         if not 1 <= limit <= 50:
@@ -61,6 +63,8 @@ def register(mcp: FastMCP) -> None:
             raise ValueError(f"无效审批动作：{action}，可选值 {'/'.join(_ACTIONS)}")
         if not idempotency_key:
             raise ValueError("幂等键缺失：写入类调用必须携带")
+        # 审批人越权守卫：操作人取幂等键前缀（{userId}_...），token 身份必须一致
+        await xauth.guard(idempotency_key.split("_", 1)[0])
 
         # 1. 幂等检查：命中返回已处理状态（doc_no 字段复用存 approval_id）
         existing = await idempotency.lookup(idempotency_key)
