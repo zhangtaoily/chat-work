@@ -20,6 +20,7 @@
 | v1.7.7 | 2026-09-17 | — | MVP 二次收窄（OA 侧只留请假审批）：删除场景 1-2 请购单录入、场景 1-3 报销审批（含技能清单 oa_purchase_request/oa_expense_report，官方技能 6→4 个）；新增 6.1.2 OA 表单扩展承接（报销/请购迁入 Phase 2，表单定义与交互模式复用场景 1-1）；收窄原则、5.2 标题、5.4 覆盖表、6.1.1 业务澄清、16.1 评测集（报销/请购标注 Phase 2）联动更新 |
 | v1.8 | 2026-09-18 | — | 第 13 章新增 13.1 MVP 开发进度状态表：Agent Core 流水线、4 个官方技能（请假录入 oa_leave_request / 待办审批 oa_todo_approve / BI 查询 bi_query / 周报生成 weekly_report）与桌面端（Electron）接入均标记 ✅ 已完成（单测 40 passed + 桌面端 E2E 通过）；≥3 天审批流含部门总监节点、审批"这条"承接定位与驳回原因提取（PRD 场景 2 核心验收句全链路）标记 ✅ 已验证；SSO 登录 / 组织权限实接 / 审计日志 / 生产部署与灰度标记 📋 待开发并注明前置依赖 |
 | v1.9 | 2026-09-27 | — | **@分身布置任务（任务单）交付**：5.1 新增 A-07（@点名布置任务、聊天推进、桌面端「工作任务」视图、REST /assignments）；5.6.2 工作台清单新增任务单治理行（查看 org_admin/system_admin/auditor，取消 org_admin/system_admin）。**8.5.6 新增数字分身账号创建来源口径**：`hr_sync`（P2 主通道）/ `admin`（手工例外）/ `seed`（P1 当前静态目录），三条创建原则（仅两入口建号、孤儿账号告警、建号 ≠ 开通分身）。**阶段规划调整**：系统基座夯实（Keycloak/APISIX/持久化/灰度）提前为当前主攻，业务方 OpenAPI 联调与 HR 打通后移（13 章调整说明）。**账号档案补录**：8.5.6 创建原则新增第 4 条——org_admin 可补录籍贯/学历/专业/岗位（白名单+审计，P2 由 hr_sync 权威覆盖），管理后台账号页已落地（单测 390 passed）。**账号工作台 UX 重构**：列表页瘦身为状态总览 + 「修改」入口，全部操作（分身开关/冻结/档案/授权/密码重置）移入独立账号详情页 `GET /admin/accounts/{emp_no}`（org_admin 编辑 / system_admin 只读，操作后回跳详情页）。**分身问答接档案**：twin_chat 人设注入已补录公开档案（籍贯/学历/专业/岗位）——「你是哪里人」类问题以档案事实作答，未补录字段如实说明「档案中未记录」，不再笼统以「未授权公开」拒答。**会话锁定分身**：会话框可选定固定员工数字分身（`ChatRequest.twin_emp_no` 请求级参数 + `GET /twins` 候选端点，route/extract/execute 三节点消费，桌面端 Select 选择器 localStorage 持久）——选定后本会话消息无需每条 @，消息内显式 @ 优先于锁定值，可达性校验同 @ 口径（存在/开启/未冻结/非本人），无 @ 布置消息时任务对象默认锁定分身（显式 @ / 已填草稿优先）（单测 403 passed）。**技能市场部门可见性隔离**：广场/详情按调用者过滤（官方技能全员可见，科室技能仅本科室可见——他科室专属不可见且详情直访 404，个人技能仅本人可见可装；安装端点跨科室/他人个人技能 403 独立再校验），评审工作台 include_unpublished 视角豁免（单测 407 passed）。**技能归类归属与管理界面**：U8 总账/财务凭证归财务科、生产报工归生产科、CRM 客户 360/跟单归销售科（他科室不可见不可装）；新增管理后台「技能归类」页（org_admin 编辑/system_admin 只读，通用↔专属切换、专属必填科室、落审计 skill_scope），仓储采购类默认通用可按需收紧（单测 411 passed）。**快照基线一致性修复**：restore 以 registry 为基线单一事实源——技能基线字段（title/rw/version/category/dept_scope）随代码升级生效、不被旧快照吞掉，快照仅保留生命周期状态（status/评审/统计/授权/seq）；set_scope 显式归类切换打 scope_overridden 标记，重启恢复时豁免基线同步（管理员的归类调整不被代码升级冲掉）（单测 413 passed） |
+| v1.10 | 2026-09-27 | — | **移动端登录闭环（工号密码直登）**：mock_idp /token 新增 password grant（`client_id=chat-work-miniapp` 仅 token 端点校验，aud 恒为 chat-work-desktop，agent_core RS256 验签零改动；错误文案防枚举、停用账号拒绝、工号归一化与登录页同口径，单测 29 passed）；小程序「我的」页新增 IdP 地址与账号登录（工号+密码 → JWT 自动写入 X-Chat-Auth 通道，密码不落存储，手动 Token 输入保留兜底，不做 refresh 续期）；新增 8.5.10 移动端登录小节，8.5.1 矩阵移动端行与 8.5.3 补 MVP 过渡口径；生产 Keycloak 受控开启 Direct Access Grants 可平滑迁移，Phase 3 演进企微免登后下线 |
 
 ---
 
@@ -935,7 +936,7 @@ Chat-Work 不直接对接各 IdP 的私有协议，而是引入**身份代理层
 | 终端 / 场景 | IdP | 接入协议 | Broker 中的身份源 |
 |------------|-----|---------|-----------------|
 | 桌面客户端（MVP 唯一客户端，见 5.5） | AD / Entra ID（原 Azure AD） | OIDC + PKCE，**系统默认浏览器授权 + Loopback 回调**（见 8.5.8） | AD 账号（UPN） |
-| 移动端小程序（Phase 3） | 企微 / 钉钉 | 企微网页授权 / 钉钉免登（免密授权，见 8.5.3） | 企微 userid / 钉钉 unionid |
+| 移动端小程序（MVP 见 8.5.10） | 企微 / 钉钉 | MVP 工号密码直登（password grant，见 8.5.10）→ Phase 3 企微网页授权 / 钉钉免登（见 8.5.3） | 企微 userid / 钉钉 unionid |
 
 **身份代理推荐方案：Keycloak**（开源、支持 OIDC/SAML/CAS/社交 IdP 桥接、支持账号 Federation 到 LDAP/AD）。备选：自研 Spring Authorization Server。
 
@@ -978,6 +979,8 @@ Chat-Work 不直接对接各 IdP 的私有协议，而是引入**身份代理层
 | 5 | HTTPS 全程 | 授权端点、回调端点强制 TLS |
 
 #### 8.5.3 企微 / 钉钉免登流程（Phase 3 小程序）
+
+> MVP 阶段小程序以工号密码直登过渡（见 8.5.10）；本节为 Phase 3 目标形态，免登上线后 password grant 下线。
 
 用户在企微/钉钉内打开 Chat-Work 小程序（Phase 3）时**免输入账号密码**（桌面端不适用，走 8.5.8 系统浏览器授权）：
 
@@ -1126,6 +1129,38 @@ Broker 签发的 access_token 为 **JWT（RS256 签名）**，Chat-Work 后端�
 - 用户**永不向 Chat-Work 提供业务系统密码**
 - Service Account + 用户身份透传，双重校验
 - 敏感系统（U8、MES）额外增加 IP 白名单
+
+#### 8.5.10 移动端登录（MVP：password grant）
+
+> 小程序无系统浏览器与重定向回调能力（授权码 + Loopback 回调流不适用），MVP 阶段采用 **OAuth password grant（Resource Owner Password Credentials）工号密码直登**作为过渡方案；Phase 3 升级企微免登（见 8.5.3）后下线。
+
+**登录时序：**
+
+```
+小程序「我的」页        mock_idp (Broker)           agent_core
+   │ ①输入工号+密码        │                          │
+   │ ②POST /realms/chat-work/protocol/openid-connect/token │
+   │   (grant_type=password, client_id=chat-work-miniapp)  │
+   │──────────────────────▶│                          │
+   │                       │ ③校验：工号 strip+upper 归一化 / PBKDF2 验密 │
+   │                       │   错误统一「工号或密码错误」（防枚举）；停用拒绝 │
+   │ ④access_token (JWT)   │                          │
+   │◀──────────────────────│                          │
+   │ ⑤token 存 Taro storage（bearerToken 字段）         │
+   │ ⑥后续请求走 X-Chat-Auth 头 ────────────────────────▶ ⑦ RS256 验签（现有链路零改动）
+```
+
+**关键口径：**
+
+| # | 口径 | 说明 |
+|---|------|------|
+| 1 | `client_id=chat-work-miniapp` 仅 token 端点校验 | 客户端集合 `chat-work-desktop`（授权码+PKCE）/ `chat-work-miniapp`（password） |
+| 2 | `aud` 恒为 `chat-work-desktop` | aud=资源消费者口径，agent_core `SSO_AUDIENCE` 校验零改动；claims 与授权码流程同构（sub/idp/dept/roles/perm_ver/sid/jti） |
+| 3 | 密码只经手 IdP | 密码仅在 POST body 中发往 IdP，不落小程序存储、不经过 agent_core；成功后立即清空输入框 |
+| 4 | 防枚举 | 错密码与未知工号统一「工号或密码错误」；停用账号「账号已停用，请联系管理员」 |
+| 5 | 不实现 refresh 续期 | token 过期（30 分钟）重新登录；手动 Bearer Token 输入保留为兜底 |
+
+**生产演进**：生产 Keycloak 对 `chat-work-miniapp` 客户端**受控开启 Direct Access Grants**（仅移动客户端，桌面端保持授权码+PKCE），小程序代码零改动平滑迁移；Phase 3 企微免登上线后关闭该 grant 收口。
 
 ### 8.6 MCP 企业部署注意事项
 

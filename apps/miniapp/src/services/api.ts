@@ -41,6 +41,32 @@ async function request<T>(method: Method, path: string, data?: unknown): Promise
   return res.data as T;
 }
 
+// ---- 登录（PRD 8.5.10 工号密码直登）----
+
+/** 工号密码直登（PRD 8.5.10）：password grant 换 JWT。密码只 POST 到 IdP，不落任何存储 */
+export async function loginWithPassword(empNo: string, password: string): Promise<string> {
+  const { idpBase } = getSettings();
+  const body = [
+    'grant_type=password',
+    `username=${encodeURIComponent(empNo)}`,
+    `password=${encodeURIComponent(password)}`,
+    'client_id=chat-work-miniapp',
+  ].join('&');
+  const res = await Taro.request({
+    url: `${idpBase}/realms/chat-work/protocol/openid-connect/token`,
+    method: 'POST',
+    data: body,
+    header: { 'content-type': 'application/x-www-form-urlencoded' },
+  });
+  if (res.statusCode >= 400) {
+    const err = (res.data as { error_description?: string }) || {};
+    throw new Error(err.error_description || `登录失败（${res.statusCode}）`);
+  }
+  const token = (res.data as { access_token?: string }).access_token;
+  if (!token) throw new Error('登录响应缺少 access_token');
+  return token;
+}
+
 // ---- 记忆面板（PRD 9.2/9.3）----
 
 export async function fetchMemoryList(layer?: string): Promise<MemoryListResponse> {

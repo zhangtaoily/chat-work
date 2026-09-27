@@ -10,12 +10,15 @@ export interface SettingsState {
   demoMode: boolean;
   /** agent_core 服务地址（如 https://gw.example.com/api） */
   apiBase: string;
-  /** 可选 Bearer Token（X-Chat-Auth 兼容头；企微免登接入后自动换取） */
+  /** IdP 服务地址（工号密码直登用，PRD 8.5.10；默认本地 mock_idp） */
+  idpBase: string;
+  /** 可选 Bearer Token（X-Chat-Auth 兼容头；直登成功后自动写入） */
   bearerToken: string;
   /** 当前用户工号（SSO_REQUIRED=false 时 /chat 请求体直传） */
   userId: string;
   setDemoMode: (v: boolean) => void;
   setApiBase: (v: string) => void;
+  setIdpBase: (v: string) => void;
   setBearerToken: (v: string) => void;
   setUserId: (v: string) => void;
   load: () => void;
@@ -32,6 +35,7 @@ function persist(state: Partial<SettingsState>) {
 export const useSettings = create<SettingsState>((set) => ({
   demoMode: true,
   apiBase: 'http://localhost:8000',
+  idpBase: 'http://127.0.0.1:8012',
   bearerToken: '',
   userId: 'emp001',
   setDemoMode: (v) => {
@@ -41,6 +45,10 @@ export const useSettings = create<SettingsState>((set) => ({
   setApiBase: (v) => {
     set({ apiBase: v });
     persist({ apiBase: v });
+  },
+  setIdpBase: (v) => {
+    set({ idpBase: v });
+    persist({ idpBase: v });
   },
   setBearerToken: (v) => {
     set({ bearerToken: v });
@@ -69,6 +77,7 @@ export function getSettings() {
   return {
     demoMode: s.demoMode,
     apiBase: s.apiBase,
+    idpBase: s.idpBase,
     bearerToken: s.bearerToken,
     userId: s.userId,
   };

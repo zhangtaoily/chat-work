@@ -1,5 +1,5 @@
-// 我的页（PLAN P3.4，PRD 8.5.3 企微免登留接口 / PRD 9.2 记忆面板移动端）
-// 连接设置（演示开关/API/Token）+ 个人·组织记忆（同意/新增/删除/清除/导出）
+// 我的页（PLAN P3.4，PRD 8.5.10 工号密码直登 / 8.5.3 企微免登 Phase 3 留位 / PRD 9.2 记忆面板移动端）
+// 连接设置（演示开关/API/IdP/Token/账号登录）+ 个人·组织记忆（同意/新增/删除/清除/导出）
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Switch, Input, Textarea } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
@@ -12,6 +12,7 @@ import {
   clearMemory,
   setMemoryConsent,
   memoryExportUrl,
+  loginWithPassword,
 } from '@/services/api';
 import { formatCompactTime, truncate } from '@/utils/format';
 import type { MemoryEntry, MemoryStats } from '@/types/chat';
@@ -31,6 +32,9 @@ const Mine: React.FC = () => {
   const [layerFilter, setLayerFilter] = useState('');
   const [newMemory, setNewMemory] = useState('');
   const [adding, setAdding] = useState(false);
+  const [loginEmpNo, setLoginEmpNo] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
   const refreshMemory = useCallback(async (layer?: string) => {
     try {
@@ -123,6 +127,24 @@ const Mine: React.FC = () => {
     Taro.setClipboardData({ data: url });
   };
 
+  const handleLogin = async () => {
+    const empNo = loginEmpNo.trim();
+    if (!empNo || !loginPassword || loggingIn) return;
+    setLoggingIn(true);
+    try {
+      const token = await loginWithPassword(empNo, loginPassword);
+      settings.setBearerToken(token); // 覆盖手动 Token（同一 storage 字段）
+      settings.setUserId(empNo.toUpperCase()); // mock_idp 归一化口径
+      setLoginPassword('');
+      Taro.showToast({ title: '登录成功', icon: 'success' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '登录失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
   return (
     <View className={styles.page}>
       <ScrollView className={styles.scroll} scrollY enhanced showScrollbar={false}>
@@ -151,7 +173,7 @@ const Mine: React.FC = () => {
             />
           </View>
           <Text className={styles.rowHint}>
-            开启时使用内置演示数据；关闭后直连 agent_core（企微免登接入后自动换取凭证）
+            开启时使用内置演示数据；关闭后直连 agent_core；推荐下方账号登录直取凭证（企微免登 Phase 3）
           </Text>
           {!settings.demoMode ? (
             <>
@@ -162,6 +184,15 @@ const Mine: React.FC = () => {
                   value={settings.apiBase}
                   placeholder="https://gw.example.com/api"
                   onInput={(e) => settings.setApiBase(e.detail.value)}
+                />
+              </View>
+              <View className={styles.field}>
+                <Text className={styles.fieldLabel}>IdP 地址</Text>
+                <Input
+                  className={styles.fieldInput}
+                  value={settings.idpBase}
+                  placeholder="http://127.0.0.1:8012"
+                  onInput={(e) => settings.setIdpBase(e.detail.value)}
                 />
               </View>
               <View className={styles.field}>
@@ -182,6 +213,33 @@ const Mine: React.FC = () => {
                   placeholder="emp001"
                   onInput={(e) => settings.setUserId(e.detail.value)}
                 />
+              </View>
+              <View className={styles.field}>
+                <Text className={styles.fieldLabel}>账号登录（工号密码直登，成功后自动填充 Token）</Text>
+                <Input
+                  className={styles.fieldInput}
+                  value={loginEmpNo}
+                  placeholder="工号，如 E1001"
+                  onInput={(e) => setLoginEmpNo(e.detail.value)}
+                />
+                <Input
+                  className={styles.fieldInput}
+                  value={loginPassword}
+                  placeholder="密码"
+                  password
+                  onInput={(e) => setLoginPassword(e.detail.value)}
+                />
+              </View>
+              <View className={styles.addRow}>
+                <View
+                  className={classnames(
+                    styles.addBtn,
+                    (!loginEmpNo.trim() || !loginPassword || loggingIn) && styles.addBtnDisabled
+                  )}
+                  onClick={handleLogin}
+                >
+                  <Text className={styles.addBtnText}>{loggingIn ? '登录中…' : '登录'}</Text>
+                </View>
               </View>
             </>
           ) : null}

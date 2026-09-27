@@ -5,7 +5,7 @@
 - GET  /realms/chat-work/.well-known/openid-configuration   # OIDC 发现
 - GET  /realms/chat-work/protocol/openid-connect/auth        # 授权端点（登录页）
 - POST /realms/chat-work/protocol/openid-connect/auth        # 工号+密码认证 → 发授权码
-- POST /realms/chat-work/protocol/openid-connect/token        # code+PKCE 换 token / refresh 轮换
+- POST /realms/chat-work/protocol/openid-connect/token        # code+PKCE 换 token / refresh 轮换 / password 移动端直登
 - GET  /realms/chat-work/protocol/openid-connect/certs        # JWKS（RS256 公钥）
 - POST /realms/chat-work/protocol/openid-connect/revoke       # 登出吊销（refresh token）
 - POST /internal/users/{emp_no}/password                      # 内网管理：重置口令
@@ -31,7 +31,6 @@ from mock_idp import keys, pages
 from mock_idp.store import (
     AUTH_CODE_TTL_SECONDS,
     AuthCode,
-    TokenStore,
     base_claims,
     jwt_id,
     store,
@@ -44,6 +43,9 @@ ISSUER = os.environ.get("SSO_ISSUER", "http://localhost:8012/realms/chat-work")
 ACCESS_TTL_SECONDS = 30 * 60  # access_token 30 分钟（PRD 8.5.4）
 PERM_VER = int(os.environ.get("MOCK_PERM_VER", "17"))  # 权限数据版本号
 CLIENT_ID = "chat-work-desktop"
+# 客户端集合（token 端点校验用）：desktop（授权码+PKCE）/ miniapp（password 直登）。
+# 注意 aud 恒为 CLIENT_ID（资源消费者口径，agent_core SSO_AUDIENCE 校验不变）
+CLIENT_IDS = {"chat-work-desktop", "chat-work-miniapp"}
 
 # 授权端点必备参数
 _REQUIRED_AUTH_PARAMS = (
@@ -132,7 +134,7 @@ async def discovery() -> dict[str, Any]:
         "revocation_endpoint": f"{ISSUER}/protocol/openid-connect/revoke",
         "response_types_supported": ["code"],
         "code_challenge_methods_supported": ["S256"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "grant_types_supported": ["authorization_code", "refresh_token", "password"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
     }
@@ -285,16 +287,20 @@ async def token_endpoint(
     client_id: str = Form(""),
     code_verifier: str = Form(""),
     refresh_token: str = Form(""),
+    username: str = Form(""),
+    password: str = Form(""),
 ) -> JSONResponse | dict[str, Any]:
-    """token 端点：authorization_code（PKCE）或 refresh_token（轮换）。"""
-    if client_id != CLIENT_ID:
+    """token 端点：authorization_code（PKCE）/ refresh_token（轮换）/ password（移动端直登）。"""
+    if client_id not in CLIENT_IDS:
         return _oauth_error("invalid_client", "unknown client", 401)
 
     if grant_type == "authorization_code":
         return await _exchange_code(code, redirect_uri, code_verifier)
     if grant_type == "refresh_token":
         return await _rotate_refresh(refresh_token)
-    return _oauth_error("unsupported_grant_type", "grant_type 必须为 authorization_code 或 refresh_token")  # noqa: E501
+    if grant_type == "password":
+        return _password_grant(username, password)
+    return _oauth_error("unsupported_grant_type", "grant_type 必须为 authorization_code / refresh_token / password")
 
 
 async def _exchange_code(
@@ -330,6 +336,27 @@ async def _rotate_refresh(refresh_token: str) -> JSONResponse | dict[str, Any]:
     tokens = _issue_tokens(session.sub, session.session_id)
     # 覆盖 refresh_token 为轮换产物
     return {**tokens, "refresh_token": new_refresh}
+
+
+def _password_grant(username: str, password: str) -> JSONResponse | dict[str, Any]:
+    """移动端直登（PRD 8.5.10）：工号+密码直接签发 token（小程序无重定向回调）。
+
+    与登录页同口径：密码只到 IdP；错误统一「工号或密码错误」防枚举；
+    停用拒绝。claims 与授权码流程同构（aud=desktop 资源消费者口径），
+    agent_core 验签零改动。生产 Keycloak 受控开启 Direct Access Grants。
+    """
+    from mock_idp.users import find_by_emp_no, verify_password
+
+    if not username.strip() or not password:
+        return _oauth_error("invalid_request", "username / password 必填", 400)
+    user = find_by_emp_no(username)
+    if user is None or not verify_password(user, password):
+        # 与登录页同文案（不区分哪个错，防用户枚举，PRD 8.5.6）
+        return _oauth_error("invalid_grant", "工号或密码错误", 400)
+    if not user.enabled:
+        return _oauth_error("invalid_grant", "账号已停用，请联系管理员", 400)
+    session = store.new_session(sub=user.emp_no)
+    return _issue_tokens(user.emp_no, session.session_id)
 
 
 @app.post("/realms/chat-work/protocol/openid-connect/revoke")

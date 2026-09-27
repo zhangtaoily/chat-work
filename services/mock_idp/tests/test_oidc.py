@@ -10,7 +10,7 @@ import httpx
 import jwt as pyjwt
 import pytest
 
-from mock_idp import keys, users
+from mock_idp import users
 from mock_idp.main import app
 from mock_idp.store import store
 
@@ -43,8 +43,6 @@ async def authorize_and_get_code(
 ) -> dict[str, str]:
     """走 authorize 提交登录（工号+密码），解析 302 Location 中的 code/state。"""
     verifier, _challenge = make_pkce()
-    if challenge is not None:
-        _, challenge = challenge, challenge  # noqa: F841 - 语义占位
     if challenge is None:
         challenge = (
             base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
