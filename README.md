@@ -157,3 +157,10 @@ http 模式下，MCP 服务以 **Service Account** 调用真实系统 OpenAPI，
 - **LLM 未接入**：未配置 `LLM_BASE_URL` 时走规则兜底，意图识别与槽位提取的覆盖面有限（如客户名与动词间带空格等句式会解析失败）
 - **SSE doc_workbench 事件未接线**：wb-a 文档弹层的后端推送事件尚未在桌面端消费
 - macOS 打包分发、数据持久化（写路径重启即失）未做
+
+## 联系与交流
+
+微信扫码添加好友，欢迎交流企业 AI Agent / 数字分身方向的话题：
+
+<img src="./img/c5fbcf54-cd88-406a-96c6-aed80f19a874.png" alt="微信联系方式" width="220" />
+
